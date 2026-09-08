@@ -20,10 +20,10 @@ const SECTORS = [
 
 function fitBadge(fit: "ALTO" | "MEDIO" | "BAJO") {
   if (fit === "ALTO")
-    return <Badge className="bg-emerald-100 text-emerald-700">ALTO</Badge>
+    return <Badge className="bg-emerald-100 text-emerald-700">Alineación Alta</Badge>
   if (fit === "MEDIO")
-    return <Badge className="bg-amber-100 text-amber-700">MEDIO</Badge>
-  return <Badge className="bg-red-100 text-red-700">BAJO</Badge>
+    return <Badge className="bg-amber-100 text-amber-700">Alineación Media</Badge>
+  return <Badge className="bg-red-100 text-red-700">Alineación Baja</Badge>
 }
 
 function CandidateCard({ item }: { item: CandidateResult }) {
@@ -86,11 +86,11 @@ function CandidateCard({ item }: { item: CandidateResult }) {
               )}
               <span className="flex items-center gap-1">
                 <Users className="size-3" />
-                {c.administrators?.length ?? 0} administradores
+                {c.administrators?.length ?? 0} Administradores
               </span>
               <span className="flex items-center gap-1">
                 <ArrowUpDown className="size-3" />
-                {c.borme_acts_count} actos BORME
+                {c.borme_acts_count} Actos en BORME
               </span>
             </div>
 
@@ -102,7 +102,7 @@ function CandidateCard({ item }: { item: CandidateResult }) {
 
             <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
               <Sparkles className="size-3" />
-              Score BORME: {item.borme_score}
+              Indicador BORME: {item.borme_score}
               <ChevronRight className="size-3" />
               <span className="font-medium text-foreground">Fit: {item.fit_score}</span>
             </div>
@@ -170,14 +170,14 @@ export function CandidatesPage() {
       <header>
         <h1 className="text-2xl font-bold">Candidatas</h1>
         <p className="text-muted-foreground">
-          Empresas puntuadas por el Agente segun el perfil del search fund
+          Análisis de candidatas priorizadas mediante el Agente según el perfil estratégico del fondo
         </p>
       </header>
 
       {llmOk === false && (
         <div className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
           <AlertTriangle className="size-4" />
-          El Agente no esta disponible. Comprueba que Ollama esta activo.
+          El motor de análisis (Ollama) no está disponible. Por favor, verifique que el servicio esté activo.
         </div>
       )}
 
@@ -204,7 +204,7 @@ export function CandidatesPage() {
             </div>
             <div>
               <label htmlFor="max-analyze" className="mb-1 block text-xs font-medium text-muted-foreground">
-                Máx. analizar
+                Muestra de Análisis
               </label>
               <select
                 id="max-analyze"
@@ -221,7 +221,7 @@ export function CandidatesPage() {
               disabled={loading || llmOk === false}
             >
               {loading ? <Loader2 className="animate-spin" /> : <SearchIcon />}
-              Buscar candidatos
+              Iniciar Análisis de Candidatos
             </Button>
           </div>
         </CardContent>
@@ -241,8 +241,8 @@ export function CandidatesPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground">
           <Loader2 className="size-8 animate-spin" />
-          <p className="text-sm">Analizando empresas con el Agente...</p>
-          <p className="text-xs">Esto puede tardar varios minutos</p>
+          <p className="text-sm">El Agente está evaluando la viabilidad de las empresas...</p>
+          <p className="text-xs">Este proceso de análisis cualitativo puede demorar unos minutos.</p>
           <Button variant="outline" size="sm" onClick={() => { abortRef.current?.abort(); setLoading(false); }}>
             Cancelar
           </Button>
@@ -263,9 +263,9 @@ export function CandidatesPage() {
       ) : (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <Sparkles className="mb-4 size-12 opacity-30" />
-          <p className="text-lg font-medium">Selecciona sectores y pulsa buscar</p>
+          <p className="text-lg font-medium">Configuración de Análisis</p>
           <p className="mt-1 text-sm">
-            El Agente buscara empresas y las puntuara segun el perfil del fondo
+            Defina los sectores objetivo para que el Agente identifique y puntúe las mejores oportunidades.
           </p>
         </div>
       )}
