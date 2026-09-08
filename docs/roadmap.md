@@ -290,6 +290,7 @@ search-fund-tool/
 - [x] **LOW**: "use client" removed, React.memo, orphan singleton
 
 ## Decisiones Pendientes
+- [ ] **CRÍTICO: Rediseño de Reportes Ejecutivos**: Crear plantillas profesionales (Finance-Grade) para exportaciones de PDF y Excel. Revisar backend (`export.py`) y frontend para que las tablas de análisis y EBITDA sean herramientas de decisión profesional para Cabiedes.
 - [ ] Autenticar `gh` para push a GitHub (problema de cuenta)
 - [ ] Decidir fecha de reunión con Cabiedes (para deadline del MVP)
 - [ ] Distribución multiplataforma (builds .exe/.app en otra máquina)

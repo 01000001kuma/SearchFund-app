@@ -67,8 +67,8 @@ export function ChatPage() {
     return () => abortRef.current?.abort()
   }, [])
 
-  async function handleSend(e: FormEvent) {
-    e.preventDefault()
+  async function handleSend(e?: FormEvent) {
+    if (e) e.preventDefault()
     const text = input.trim()
     if (!text || loading) return
 
@@ -100,6 +100,18 @@ export function ChatPage() {
     }
   }
 
+  function handleQuickPrompt(text: string) {
+    setInput(text)
+    inputRef.current?.focus()
+  }
+
+  function handleClearChat() {
+    setMessages([])
+    setContextCif(null)
+    setContextName(null)
+    setError(null)
+  }
+
   function handleSetContext() {
     const cif = cifInput.trim()
     if (!cif) return
@@ -126,17 +138,29 @@ export function ChatPage() {
       <header className="flex items-center justify-between border-b pb-4">
         <div>
           <h1 className="text-2xl font-bold">Agente</h1>
-          <p className="text-sm text-muted-foreground">
-            Pideme lo que quieras.
+          <p className="text-sm text-muted-foreground max-w-2xl">
+            Asistente de Análisis de Inversiones: El Agente es el cerebro analítico para evaluar la viabilidad de candidatas, analizar datos del BORME y sintetizar oportunidades de adquisición. Evalúa las candidatas y las puntúa según un ranking de viabilidad, permitiendo además realizar comparativas detalladas entre ellas.
           </p>
         </div>
-        {llmHealth && (
-          <Badge variant={llmHealth.configured ? "default" : "destructive"}>
-            {llmHealth.configured
-              ? `${llmHealth.provider} activo`
-              : "Agente no disponible"}
-          </Badge>
-        )}
+        <div className="flex items-center gap-3">
+          {messages.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearChat}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              Limpiar Chat
+            </Button>
+          )}
+          {llmHealth && (
+            <Badge variant={llmHealth.configured ? "default" : "destructive"}>
+              {llmHealth.configured
+                ? `${llmHealth.provider} activo`
+                : "Agente no disponible"}
+            </Badge>
+          )}
+        </div>
       </header>
 
       <div className="flex items-center gap-2 border-b py-2">
@@ -180,12 +204,31 @@ export function ChatPage() {
 
       <div className="flex-1 overflow-y-auto py-4">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full">
+          <div className="flex flex-col items-center justify-center h-full px-4 text-center">
             <Bot className="mb-4 size-12 opacity-30" />
             <p className="text-lg font-medium">Empieza a conversar</p>
-            <p className="mt-1 mb-6 text-sm text-muted-foreground">
-              Analiza empresas · Compara candidatas · Genera informes · Busca por sectores y provincias · Refina criterios de busqueda
+            <p className="mt-1 mb-6 text-sm text-muted-foreground max-w-md">
+              Selecciona una acción rápida para comenzar o escribe tu propia consulta de análisis.
             </p>
+            <div className="flex flex-wrap justify-center gap-2 mb-8 max-w-2xl">
+              {[
+                "Realiza un análisis de ranking estratégico",
+                "Compara el potencial de dos candidatas",
+                "Sintetiza los puntos clave",
+                "Analiza oportunidades por sector",
+                "Sugiere criterios de búsqueda optimizados",
+              ].map((prompt) => (
+                <Button
+                  key={prompt}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickPrompt(prompt)}
+                  className="rounded-full text-xs bg-background hover:bg-primary hover:text-primary-foreground transition-colors"
+                >
+                  {prompt}
+                </Button>
+              ))}
+            </div>
             <form onSubmit={handleSend} className="flex w-full max-w-lg gap-2" aria-label="Agente">
               <Input
                 ref={inputRef}

@@ -494,10 +494,10 @@ async def get_sources():
 
 @app.post("/api/search/daily")
 async def search_daily():
-    \"\"\"
+    """
     Busca automáticamente nuevas candidatas basadas en sectores configurados,
     filtrando las que ya existen en la base de datos local.
-    \"\"\"
+    """
     from .config import settings
     sectors = settings.search_sectors
     

@@ -28,6 +28,7 @@
 - ✅ **UX Fluida**: Implementación de `Skeletons` en la página de búsqueda y `Toaster` (sonner) para notificaciones.
 - ✅ **Nativo OS**: Sincronización automática del tema (Dark/Light) según el sistema operativo del usuario.
 - ✅ **Alineación de Score**: Reescritura total de `score.py` para implementar la detección de empresas familiares y validación de CNAE.
+- ⚙️ **Pulido de Textos (En proceso)**: Optimización de títulos y descripciones en Dashboard para mayor profesionalidad.
 
 ### 2026-09-03 (Checkpoint v1.0 + auditoría exhaustiva)
 - ✅ **Auditoría exhaustiva completada**: 106 issues identificados y corregidos.

@@ -83,9 +83,6 @@ export function Dashboard() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
-          <p className="text-muted-foreground">
-            Estado actual de tu pipeline de adquisición de PYMES
-          </p>
         </div>
         <Button 
           onClick={handleDailySearch} 
@@ -188,25 +185,37 @@ export function Dashboard() {
           <CardContent className="p-6">
             <div className="flex items-center gap-2 mb-4">
               <CheckCircle2 className="size-5 text-primary" />
-              <h2 className="text-lg font-semibold">Quick Guide</h2>
+              <h2 className="text-lg font-semibold">Guía Rápida</h2>
             </div>
             <div className="space-y-4">
               <div className="rounded-lg border bg-muted/30 p-3">
                 <h3 className="text-sm font-medium">Búsqueda Diaria</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Sincroniza el registro mercantil y encuentra nuevas candidatas automáticamente.
+                  En el panel de control sincroniza el registro mercantil y encuentra nuevas candidatas automáticamente.
                 </p>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
-                <h3 className="text-sm font-medium">Análisis LLM</h3>
+                <h3 className="text-sm font-medium">Análisis junto con el Agente</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Usa el Agente para analizar el "Fit" de una empresa basándose en el dossier de Cabiedes.
+                  Utiliza el agente para analizar empresas detalladamente
                 </p>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3">
-                <h3 className="text-sm font-medium">Exportación Pro</h3>
+                <h3 className="text-sm font-medium">Candidatas</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Genera PDFs ejecutivos para presentar a inversores.
+                  Accede al listado completo de empresas detectadas, filtradas y priorizadas por su probabilidad de compra.
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <h3 className="text-sm font-medium">Búsqueda Inteligente</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Explora Las empresas encontradas, filtralas y detecta candidatas con el algoritmo de puntuacion automático.
+                </p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <h3 className="text-sm font-medium">Listas</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Organiza tus candidatas en grupos personalizados y exporta las candidatas en PDFs o Tablas de EXCEL para su analisis financiero.
                 </p>
               </div>
             </div>
