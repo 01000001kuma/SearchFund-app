@@ -5,10 +5,14 @@ import {
   Building2, MapPin, Users, Sparkles, ArrowUpDown,
 } from "lucide-react"
 import { api } from "@/lib/api"
-import type { CandidateResult } from "@/lib/types"
+import type { CandidateResult, Company, ScoreDistribution } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CompanyCard } from "@/components/CompanyCard"
+import { CompanyCardSkeleton } from "@/components/CompanyCardSkeleton"
+import { QUICK_SCORE_RANGES, SCORE_RANGES, rangeBounds } from "@/components/FiltersBar"
+import { Trophy, TrendingUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const SECTORS = [
@@ -20,10 +24,10 @@ const SECTORS = [
 
 function fitBadge(fit: "ALTO" | "MEDIO" | "BAJO") {
   if (fit === "ALTO")
-    return <Badge className="bg-emerald-100 text-emerald-700">Alineación Alta</Badge>
+    return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">Alineación Alta</Badge>
   if (fit === "MEDIO")
-    return <Badge className="bg-amber-100 text-amber-700">Alineación Media</Badge>
-  return <Badge className="bg-red-100 text-red-700">Alineación Baja</Badge>
+    return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">Alineación Media</Badge>
+  return <Badge className="bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">Alineación Baja</Badge>
 }
 
 function CandidateCard({ item }: { item: CandidateResult }) {
@@ -51,10 +55,10 @@ function CandidateCard({ item }: { item: CandidateResult }) {
               className={cn(
                 "flex size-14 items-center justify-center rounded-full text-lg font-bold",
                 item.fit_score >= 70
-                  ? "bg-emerald-100 text-emerald-700"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
                   : item.fit_score >= 40
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-red-100 text-red-700",
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400"
+                    : "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400",
               )}
             >
               {item.fit_score}
@@ -114,7 +118,19 @@ function CandidateCard({ item }: { item: CandidateResult }) {
 }
 
 export function CandidatesPage() {
+  // Ranking completo de la BD, cargado al entrar (ordenado por score DESC)
+  const [rank, setRank] = useState<Company[]>([])
+  const [rankLoading, setRankLoading] = useState(true)
+  const [activeChip, setActiveChip] = useState<string | null>(null)
   const [results, setResults] = useState<CandidateResult[]>([])
+  const [warnings, setWarnings] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [searched, setSearched] = useState(false)
+  const [totalCompanies, setTotalCompanies] = useState(0)
+  const [llmOk, setLlmOk] = useState<boolean | null>(null)
+  const [selectedSectors, setSelectedSectors] = useState<string[]>(SECTORS)
+  const [maxAnalyze, setMaxAnalyze] = useState(10)
+  const abortRef = useRef<AbortController | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
@@ -127,6 +143,15 @@ export function CandidatesPage() {
   useEffect(() => {
     const ctrl = new AbortController()
     api.llmHealth({ signal: ctrl.signal }).then((r) => setLlmOk(r.llm.configured)).catch(() => setLlmOk(false))
+    return () => ctrl.abort()
+  }, [])
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    api.getCompanies({ limit: 500 }, { signal: ctrl.signal })
+      .then((res) => setRank(res.companies))
+      .catch(() => setRank([]))
+      .finally(() => setRankLoading(false))
     return () => ctrl.abort()
   }, [])
 
@@ -165,19 +190,104 @@ export function CandidatesPage() {
     )
   }
 
+  // Distribución y filtro del ranking en cliente (la lista ya está cargada)
+  const dist: ScoreDistribution | null = rank
+    ? {
+        alto: rank.filter((c) => (c.score ?? 0) >= 60).length,
+        medio: rank.filter((c) => (c.score ?? 0) >= 40 && (c.score ?? 0) < 60).length,
+        bajo: rank.filter((c) => (c.score ?? 0) < 40).length,
+      }
+    : null
+
+  const bounds = rangeBounds(SCORE_RANGES, activeChip ?? "all")
+  const visibleRank =
+    bounds.min !== undefined || bounds.max !== undefined
+      ? rank.filter((c) => {
+          const s = c.score ?? 0
+          if (bounds.min !== undefined && s < bounds.min) return false
+          if (bounds.max !== undefined && s > bounds.max) return false
+          return true
+        })
+      : rank
+
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-bold">Candidatas</h1>
         <p className="text-muted-foreground">
-          Análisis de candidatas priorizadas mediante el Agente según el perfil estratégico del fondo
+          Todas las empresas encontradas, ranqueadas de mejor a peor. Usa el Agente para un análisis profundo de las mejores.
         </p>
       </header>
 
+      {rankLoading ? (
+        <div className="grid grid-cols-1 gap-3">
+          {[...Array(6)].map((_, i) => (
+            <CompanyCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Ranking de adquisición
+            </span>
+            {QUICK_SCORE_RANGES.map((r) => {
+              const active = activeChip === r.value
+              const count = dist ? dist[r.value as keyof ScoreDistribution] : undefined
+              const tone =
+                r.tone === "red"
+                  ? { idle: "bg-red-400 text-black hover:bg-red-300", active: "bg-red-500 text-black ring-1 ring-red-600" }
+                  : r.tone === "orange"
+                    ? { idle: "bg-orange-400 text-black hover:bg-orange-300", active: "bg-orange-500 text-black ring-1 ring-orange-600" }
+                    : { idle: "bg-green-400 text-black hover:bg-green-300", active: "bg-green-500 text-black ring-1 ring-green-600" }
+              return (
+                <button
+                  key={r.value}
+                  onClick={() => setActiveChip(active ? null : r.value)}
+                  aria-pressed={active}
+                  className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    active ? `border-transparent ${tone.active}` : `border-transparent ${tone.idle}`
+                  }`}
+                >
+                  {r.label}
+                  {count !== undefined && (
+                    <span className="ml-0.5 rounded-full bg-white px-1.5 text-[10px] font-bold text-black">{count}</span>
+                  )}
+                </button>
+              )
+            })}
+            <span className="text-xs text-muted-foreground">
+              {visibleRank.length} de {rank.length} empresas · score ↓
+            </span>
+          </div>
+
+          {visibleRank.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
+              <Trophy className="mb-4 size-12 opacity-30" />
+              <p className="text-lg font-medium">Aún no hay empresas en el ranking</p>
+              <p className="mt-1 text-sm">Haz una búsqueda para empezar a poblarlo.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {visibleRank.map((c) => (
+                <CompanyCard key={c.cif ?? c.slug} company={c} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      <div className="flex items-center gap-2 pt-2">
+        <Sparkles className="size-4 text-muted-foreground" />
+        <h2 className="text-lg font-semibold">Análisis del Agente</h2>
+      </div>
+
       {llmOk === false && (
-        <div className="flex items-center gap-2 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           <AlertTriangle className="size-4" />
           El motor de análisis (Ollama) no está disponible. Por favor, verifique que el servicio esté activo.
+        </div>
+      )}          El motor de análisis (Ollama) no está disponible. Por favor, verifique que el servicio esté activo.
         </div>
       )}
 
@@ -230,7 +340,7 @@ export function CandidatesPage() {
       {warnings.length > 0 && (
         <div className="space-y-1">
           {warnings.map((w, i) => (
-            <div key={i} className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            <div key={i} className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
               <AlertTriangle className="size-4 shrink-0" />
               {w}
             </div>
