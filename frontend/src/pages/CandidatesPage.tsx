@@ -131,14 +131,6 @@ export function CandidatesPage() {
   const [selectedSectors, setSelectedSectors] = useState<string[]>(SECTORS)
   const [maxAnalyze, setMaxAnalyze] = useState(10)
   const abortRef = useRef<AbortController | null>(null)
-  const [warnings, setWarnings] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [searched, setSearched] = useState(false)
-  const [totalCompanies, setTotalCompanies] = useState(0)
-  const [llmOk, setLlmOk] = useState<boolean | null>(null)
-  const [selectedSectors, setSelectedSectors] = useState<string[]>(SECTORS)
-  const [maxAnalyze, setMaxAnalyze] = useState(10)
-  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -286,8 +278,6 @@ export function CandidatesPage() {
         <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           <AlertTriangle className="size-4" />
           El motor de análisis (Ollama) no está disponible. Por favor, verifique que el servicio esté activo.
-        </div>
-      )}          El motor de análisis (Ollama) no está disponible. Por favor, verifique que el servicio esté activo.
         </div>
       )}
 
