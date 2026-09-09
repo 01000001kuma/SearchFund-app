@@ -437,6 +437,12 @@ class Database:
             "SELECT COUNT(*) FROM companies WHERE has_financial_data = 1 "
             "AND date(last_updated, 'localtime') = date('now', 'localtime')"
         ).fetchone()[0]
+        lists_today = conn.execute(
+            "SELECT COUNT(*) FROM lists WHERE date(created_at, 'localtime') = date('now', 'localtime')"
+        ).fetchone()[0]
+        searches_today = conn.execute(
+            "SELECT COUNT(*) FROM search_history WHERE date(searched_at, 'localtime') = date('now', 'localtime')"
+        ).fetchone()[0]
         dist_row = conn.execute(
             """
             SELECT
@@ -455,6 +461,8 @@ class Database:
             "score_distribution": {"alto": dist_row[0], "medio": dist_row[1], "bajo": dist_row[2]},
             "companies_today": companies_today,
             "financial_today": financial_today,
+            "lists_today": lists_today,
+            "searches_today": searches_today,
         }
 
     async def get_stats(self):

@@ -65,6 +65,7 @@ export function Dashboard() {
     {
       label: "Listas por Sector",
       value: stats?.total_lists ?? 0,
+      today: stats?.lists_today ?? 0,
       icon: ListChecks,
       to: "/listas",
       color: "text-amber-500",
@@ -72,6 +73,7 @@ export function Dashboard() {
     {
       label: "Búsquedas Totales",
       value: stats?.total_searches ?? 0,
+      today: stats?.searches_today ?? 0,
       icon: Search,
       to: "/buscar",
       color: "text-purple-500",
@@ -111,9 +113,13 @@ export function Dashboard() {
                 <p className="mt-2 text-3xl font-bold tracking-tight">
                   {loading ? "…" : c.value}
                 </p>
-                {!loading && c.today != null && c.today > 0 && (
+                {(c.today ?? 0) > 0 ? (
                   <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                     <TrendingUp className="size-3" />+{c.today} hoy
+                  </span>
+                ) : (
+                  <span className="mt-1.5 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    +0 hoy
                   </span>
                 )}
               </CardContent>
