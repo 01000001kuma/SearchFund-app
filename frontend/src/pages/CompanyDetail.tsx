@@ -148,7 +148,7 @@ export function CompanyDetail() {
   if (error || !company) {
     return (
       <div className="py-16 text-center">
-        <p className="text-red-600">{error ?? "Empresa no encontrada"}</p>
+        <p className="text-destructive">{error ?? "Empresa no encontrada"}</p>
         <Button variant="outline" className="mt-4" onClick={() => navigate(-1)}>
           <ArrowLeft /> Volver
         </Button>
@@ -158,6 +158,16 @@ export function CompanyDetail() {
 
   const fin = company.financial
   const borme_breakdown = company.score_breakdown?.breakdown?.borme
+
+  // Criterios BORME: puntos obtenidos / máximo posible (score.py)
+  const BORME_CRITERIA: Record<string, { label: string; max: number }> = {
+    admin_age: { label: "Edad del administrador", max: 40 },
+    stability: { label: "Estabilidad BORME", max: 15 },
+    family: { label: "Empresa familiar", max: 20 },
+    no_council: { label: "Sin consejo externo", max: 10 },
+    cnae: { label: "Sector compatible", max: 10 },
+    recent_activity: { label: "Actividad reciente", max: 25 },
+  }
 
   return (
     <div className="space-y-6">
@@ -228,9 +238,13 @@ export function CompanyDetail() {
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Mail className="size-4" />
-                  <a href={`mailto:${company.email}`} className="text-primary hover:underline truncate">
-                    {company.email ?? "Sin email"}
-                  </a>
+                  {company.email ? (
+                    <a href={`mailto:${company.email}`} className="truncate text-primary hover:underline">
+                      {company.email}
+                    </a>
+                  ) : (
+                    <span>Sin email</span>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -241,7 +255,7 @@ export function CompanyDetail() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Zap className="size-4 text-amber-500" /> Análisis de Fit ( la base del Score)
+                <Zap className="size-4 text-amber-500" /> Análisis de Fit (base del Score)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -260,8 +274,12 @@ export function CompanyDetail() {
                 </div>
                 <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-medium text-muted-foreground">Sólidez Financiera</span>
-                    <span className="text-xs font-bold text-emerald-500">Finanzas {company.score_breakdown?.financial?.toFixed(0) ?? 0}%</span>
+                    <span className="text-xs font-medium text-muted-foreground">Solidez Financiera</span>
+                    <span className="text-xs font-bold text-emerald-500">
+                      {company.score_breakdown?.financial != null
+                        ? `Finanzas ${company.score_breakdown.financial.toFixed(0)}%`
+                        : "Finanzas: sin datos"}
+                    </span>
                   </div>
                   <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
                     <div 
@@ -274,12 +292,18 @@ export function CompanyDetail() {
               
               {borme_breakdown && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {Object.entries(borme_breakdown).map(([key, val]) => (
-                    <div key={key} className="rounded-lg border p-2 text-center bg-muted/20">
-                      <p className="text-[10px] uppercase text-muted-foreground font-bold">{key.replace(/_/g, " ")}</p>
-                      <p className="text-lg font-bold">{val != null ? `${(Number(val) * 100).toFixed(0)}%` : "—"}</p>
-                    </div>
-                  ))}
+                  {Object.entries(borme_breakdown).map(([key, val]) => {
+                    const meta = BORME_CRITERIA[key]
+                    if (!meta) return null
+                    return (
+                      <div key={key} className="rounded-lg border p-2 text-center bg-muted/20">
+                        <p className="text-[10px] uppercase text-muted-foreground font-bold">{meta.label}</p>
+                        <p className="text-lg font-bold">
+                          {val != null ? `${val} / ${meta.max}` : "—"}
+                        </p>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
@@ -332,7 +356,7 @@ export function CompanyDetail() {
                   Actualizar Métricas
                 </Button>
                 {financeMsg && (
-                  <p className={`text-xs ${financeIsError ? "text-red-600" : "text-emerald-600"}`}>{financeMsg}</p>
+                  <p className={`text-xs ${financeIsError ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>{financeMsg}</p>
                 )}
               </div>
             </CardContent>
