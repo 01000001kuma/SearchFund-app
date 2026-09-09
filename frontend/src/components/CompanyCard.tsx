@@ -1,6 +1,6 @@
 import React from "react"
 import { useNavigate } from "react-router-dom"
-import { Building2, Activity, CalendarDays } from "lucide-react"
+import { Building2, Activity, CalendarDays, FileText } from "lucide-react"
 import type { Company } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +23,7 @@ export const CompanyCard = React.memo(function CompanyCard({
   const navigate = useNavigate()
   const ebitda = company.financial?.ebitda
   const revenue = company.financial?.revenue
+  const hasFinancial = ebitda != null && revenue != null
 
   return (
     <Card
@@ -43,9 +44,21 @@ export const CompanyCard = React.memo(function CompanyCard({
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <h3 className="truncate font-semibold">{company.name}</h3>
-              <Badge variant="outline" className="shrink-0">
-                {company.legal_form ?? "—"}
-              </Badge>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {hasFinancial ? (
+                  <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                    <FileText className="size-3" />
+                    Con datos financieros
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    Sin datos financieros
+                  </Badge>
+                )}
+                <Badge variant="outline" className="shrink-0">
+                  {company.legal_form ?? "—"}
+                </Badge>
+              </div>
             </div>
             <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
               <Building2 className="size-3" />
