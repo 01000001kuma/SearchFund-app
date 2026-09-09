@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, type FormEvent } from "react"
+import { useState, useEffect, useRef, useMemo, type FormEvent } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Search, Loader2, Inbox, Trophy } from "lucide-react"
+import { Search, Loader2, Inbox, Trophy, Building2 } from "lucide-react"
 import { api } from "@/lib/api"
 import type { Company, ScoreDistribution } from "@/lib/types"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,34 @@ import {
   QUICK_SCORE_RANGES,
   type Filters,
 } from "@/components/FiltersBar"
+
+// Sección CNAE (letra) → sector legible
+const CNAE_SECTORS: Record<string, string> = {
+  A: "Agroalimentario",
+  B: "Industria extractiva",
+  C: "Industria manufacturera",
+  D: "Energía",
+  E: "Agua y residuos",
+  F: "Construcción",
+  G: "Comercio",
+  H: "Transporte y logística",
+  I: "Hostelería",
+  J: "Tecnología",
+  K: "Financiero",
+  L: "Inmobiliario",
+  M: "Servicios B2B",
+  N: "Servicios operativos",
+  O: "Sector público",
+  P: "Educación",
+  Q: "Salud",
+  R: "Cultura",
+  S: "Otros servicios",
+}
+
+function sectorOf(c: Company): string | null {
+  const section = c.cnae?.split("·")[0]?.trim()?.toUpperCase()
+  return section ? (CNAE_SECTORS[section] ?? null) : null
+}
 
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -36,22 +64,22 @@ export function SearchPage() {
   const [searched, setSearched] = useState(false)
   const [distribution, setDistribution] = useState<ScoreDistribution | null>(null)
 
-  // Vista "ranking": lista de empresas en caché de una banda de score
+  // Ranking completo de la BD (vista por defecto) + chips de banda y sector
+  const [allRank, setAllRank] = useState<Company[]>([])
+  const [allRankLoading, setAllRankLoading] = useState(true)
   const [activeChip, setActiveChip] = useState<string | null>(
     () => searchParams.get("rango"),
   )
-  const [rankCompanies, setRankCompanies] = useState<Company[] | null>(null)
-  const [rankTotal, setRankTotal] = useState(0)
-  const [rankLoading, setRankLoading] = useState(false)
+  const [sectorFilter, setSectorFilter] = useState<string | null>(
+    () => searchParams.get("sector"),
+  )
 
   const abortRef = useRef<AbortController | null>(null)
-  const rankAbortRef = useRef<AbortController | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     return () => {
       abortRef.current?.abort()
-      rankAbortRef.current?.abort()
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [])
@@ -65,25 +93,26 @@ export function SearchPage() {
     }
   }
 
-  // Distribución del ranking completo + vista de ranking desde la URL
+  // Caché completo al montar: sectores + vista por defecto + chip de banda
   const mountedRef = useRef(false)
   useEffect(() => {
     if (mountedRef.current) return
     mountedRef.current = true
     void loadDistribution()
-    const rango = searchParams.get("rango")
-    if (rango && rango !== "all") {
-      void loadRanking(rango, filters)
-    } else {
-      const q = searchParams.get("q")
-      if (q) void doSearch(q, filters)
-    }
+    api
+      .getCompanies({ limit: 500 })
+      .then((res) => setAllRank(res.companies))
+      .catch(() => setAllRank([]))
+      .finally(() => setAllRankLoading(false))
+    const q = searchParams.get("q")
+    if (q) void doSearch(q, filters)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function syncUrl(q: string, f: Filters, rango: string | null = activeChip) {
+  function syncUrl(q: string, f: Filters, rango: string | null, sector: string | null) {
     const params = new URLSearchParams()
     if (rango && rango !== "all") params.set("rango", rango)
+    if (sector) params.set("sector", sector)
     if (q) params.set("q", q)
     if (f.province !== "all") params.set("provincia", f.province)
     if (f.scoreRange !== "all") params.set("score", f.scoreRange)
@@ -93,19 +122,28 @@ export function SearchPage() {
     setSearchParams(params, { replace: true })
   }
 
+  function updateUrl(partial: { rango?: string | null; sector?: string | null }) {
+    const params = new URLSearchParams(searchParams)
+    const setOrDelete = (key: string, value?: string | null) => {
+      if (value && value !== "all") params.set(key, value)
+      else params.delete(key)
+    }
+    if (partial.rango !== undefined) setOrDelete("rango", partial.rango)
+    if (partial.sector !== undefined) setOrDelete("sector", partial.sector)
+    const q = searchParams.get("q")
+    if (q) params.set("q", q)
+    setSearchParams(params, { replace: true })
+  }
+
   async function doSearch(q: string, f: Filters) {
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
 
-    // Una búsqueda de texto sustituye la vista de ranking
-    setActiveChip(null)
-    setRankCompanies(null)
-
     setLoading(true)
     setError(null)
     setWarning(null)
-    syncUrl(q, f, null)
+    syncUrl(q, f, activeChip, sectorFilter)
     const scoreBounds = rangeBounds(SCORE_RANGES, f.scoreRange)
     const ebitdaBounds = rangeBounds(EBITDA_RANGES, f.ebitdaRange)
     const revenueBounds = rangeBounds(REVENUE_RANGES, f.revenueRange)
@@ -134,61 +172,12 @@ export function SearchPage() {
     } finally {
       setLoading(false)
     }
-    // La búsqueda pudo añadir empresas al caché: refresca los conteos del ranking
+    // La búsqueda pudo añadir empresas al caché: refresca datos del ranking
+    api.getCompanies({ limit: 500 })
+      .then((res) => setAllRank(res.companies))
+      .catch(() => setAllRank([]))
+      .finally(() => setAllRankLoading(false))
     void loadDistribution()
-  }
-
-  async function loadRanking(range: string, f: Filters) {
-    rankAbortRef.current?.abort()
-    const ctrl = new AbortController()
-    rankAbortRef.current = ctrl
-
-    setRankLoading(true)
-    setError(null)
-    const bounds = rangeBounds(SCORE_RANGES, range)
-    const ebitdaBounds = rangeBounds(EBITDA_RANGES, f.ebitdaRange)
-    const revenueBounds = rangeBounds(REVENUE_RANGES, f.revenueRange)
-    try {
-      const res = await api.getCompanies({
-        min_score: bounds.min,
-        max_score: bounds.max,
-        province: f.province !== "all" ? f.province : undefined,
-        has_financial_data:
-          f.hasFinancial === "true" ? true : f.hasFinancial === "false" ? false : undefined,
-        limit: 500,
-      }, { signal: ctrl.signal })
-      // Rangos EBITDA/facturación se aplican en cliente (la BD no filtra por JSON)
-      let list = res.companies
-      if (ebitdaBounds.min !== undefined)
-        list = list.filter((c) => (c.financial?.ebitda ?? -Infinity) >= ebitdaBounds.min!)
-      if (ebitdaBounds.max !== undefined)
-        list = list.filter((c) => c.financial?.ebitda != null && c.financial.ebitda <= ebitdaBounds.max!)
-      if (revenueBounds.min !== undefined)
-        list = list.filter((c) => (c.financial?.revenue ?? -Infinity) >= revenueBounds.min!)
-      if (revenueBounds.max !== undefined)
-        list = list.filter((c) => c.financial?.revenue != null && c.financial.revenue <= revenueBounds.max!)
-      setRankCompanies(list)
-      setRankTotal(list.length)
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return
-      setError(err instanceof Error ? err.message : "Error al cargar el ranking")
-      setRankCompanies([])
-      setRankTotal(0)
-    } finally {
-      setRankLoading(false)
-    }
-  }
-
-  function handleQuickFilter(value: string) {
-    if (value === "all") {
-      setActiveChip(null)
-      setRankCompanies(null)
-      syncUrl(query.trim(), filters, null)
-      return
-    }
-    setActiveChip(value)
-    syncUrl(query.trim(), filters, value)
-    void loadRanking(value, filters)
   }
 
   function handleSubmit(e: FormEvent) {
@@ -200,10 +189,7 @@ export function SearchPage() {
 
   function handleFiltersChange(f: Filters) {
     setFilters(f)
-    if (activeChip) {
-      // La vista de ranking respeta provincia/datos financieros
-      void loadRanking(activeChip, f)
-    } else if (query.trim()) {
+    if (searched && query.trim()) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         doSearch(query.trim(), f)
@@ -211,34 +197,103 @@ export function SearchPage() {
     }
   }
 
-  const chipLabel = QUICK_SCORE_RANGES.find((r) => r.value === activeChip)?.label
-  const chipBounds = chipChipBounds(activeChip)
+  // Filtros combinables en cliente: banda de score + sector
+  const bandBounds = rangeBounds(SCORE_RANGES, activeChip ?? "all")
+  const shownList = useMemo(() => {
+    const base = searched ? results : allRank
+    let list = base
+    if (bandBounds.min !== undefined || bandBounds.max !== undefined) {
+      list = list.filter((c) => {
+        const s = c.score ?? 0
+        if (bandBounds.min !== undefined && s < bandBounds.min) return false
+        if (bandBounds.max !== undefined && s > bandBounds.max) return false
+        return true
+      })
+    }
+    if (sectorFilter) {
+      list = list.filter((c) => sectorOf(c) === sectorFilter)
+    }
+    return list
+  }, [searched, results, allRank, activeChip, sectorFilter, bandBounds.min, bandBounds.max])
 
-  function chipChipBounds(range: string | null): string {
-    if (!range) return ""
-    const found = SCORE_RANGES.find((r) => r.value === range)
-    if (!found) return ""
-    if (found.min !== undefined && found.max !== undefined) return `${found.min}–${found.max}`
-    if (found.min !== undefined) return `≥ ${found.min}`
-    return ""
-  }
+  // Sectores presentes en el caché con su número de empresas
+  const sectorCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const c of allRank) {
+      const s = sectorOf(c)
+      if (s) counts.set(s, (counts.get(s) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])
+  }, [allRank])
 
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-3xl font-bold tracking-tight">Filtrar Empresas</h1>
         <p className="text-muted-foreground">
-          Introduce un nombre o sector para encontrar PYMES en el Registro
-          Mercantil.
+          Filtra por sector y puntuación, o busca nuevas empresas en el Registro Mercantil.
         </p>
       </header>
 
+      {/* Filtro por sectores (CNAE de las empresas en caché) */}
+      {allRank.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Sectores
+          </span>
+          {sectorCounts.map(([name, count]) => {
+            const active = sectorFilter === name
+            return (
+              <Button
+                key={name}
+                variant="outline"
+                size="sm"
+                aria-pressed={active}
+                onClick={() => {
+                  const next = active ? null : name
+                  setSectorFilter(next)
+                  updateUrl({ sector: next })
+                }}
+                className={
+                  active
+                    ? "border-primary bg-primary/10 font-medium text-primary"
+                    : "text-muted-foreground"
+                }
+              >
+                {name}
+                <span
+                  className={`ml-0.5 rounded-full px-1.5 text-[10px] font-semibold ${
+                    active ? "bg-primary/15" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {count}
+                </span>
+              </Button>
+            )
+          })}
+          {sectorFilter && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs"
+              onClick={() => {
+                setSectorFilter(null)
+                updateUrl({ sector: null })
+              }}
+            >
+              Todos los sectores
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Búsqueda compacta: descubre nuevas empresas en el Registro Mercantil */}
       <form onSubmit={handleSubmit} className="flex gap-2" role="search">
         <Input
-          placeholder="Ej: industrial, alimentación, transporte..."
+          placeholder="Buscar nuevas empresas: industrial, alimentación, transporte..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="max-w-lg"
+          className="max-w-md"
           aria-label="Texto de búsqueda"
         />
         <Button type="submit" disabled={loading || !query.trim()}>
@@ -252,7 +307,11 @@ export function SearchPage() {
         onChange={handleFiltersChange}
         activeQuick={activeChip}
         counts={distribution}
-        onQuickFilter={handleQuickFilter}
+        onQuickFilter={(v) => {
+          const next = v === "all" ? null : v
+          setActiveChip(next)
+          updateUrl({ rango: next })
+        }}
       />
 
       {error && (
@@ -264,70 +323,46 @@ export function SearchPage() {
         </div>
       )}
 
-      {warning && !error && !activeChip && (
+      {warning && !error && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
           {warning}
         </div>
       )}
 
-      {activeChip && (
-        <p className="text-sm text-muted-foreground">
-          Ranking <span className="font-medium text-foreground">{chipLabel}</span>
-          {chipBounds && ` · score ${chipBounds}`}
-          {rankTotal > 0 && ` · ${rankTotal} empresa${rankTotal === 1 ? "" : "s"}`}
-        </p>
-      )}
-
-      {!activeChip && searched && !loading && !error && total === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="mb-4 rounded-full bg-muted p-4">
-            <Inbox className="size-10 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-semibold">No se encontraron resultados</h3>
-          <p className="text-muted-foreground max-w-xs">
-            Prueba a ampliar los filtros o cambiar la palabra de búsqueda.
-          </p>
-        </div>
-      )}
-
-      {!activeChip && searched && !loading && !error && total > 0 && (
+      {searched && !loading && !error && total > 0 && (
         <p className="text-sm text-muted-foreground">
           {total} resultado{total === 1 ? "" : "s"} para "{query.trim()}"
           {total > results.length && ` · mostrando ${results.length}`}
         </p>
       )}
 
-      {rankLoading ? (
+      {loading || allRankLoading ? (
         <div className="grid grid-cols-1 gap-3">
           {[...Array(6)].map((_, i) => (
             <CompanyCardSkeleton key={i} />
           ))}
         </div>
-      ) : activeChip && rankCompanies && rankCompanies.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
+      ) : shownList.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="mb-4 rounded-full bg-muted p-4">
-            <Trophy className="size-10 text-muted-foreground" />
+            {searched ? (
+              <Inbox className="size-10 text-muted-foreground" />
+            ) : (
+              <Building2 className="size-10 text-muted-foreground" />
+            )}
           </div>
-          <h3 className="text-lg font-semibold">Sin empresas en este rango</h3>
+          <h3 className="text-lg font-semibold">
+            {searched ? "No se encontraron resultados" : "Aún no hay empresas en el ranking"}
+          </h3>
           <p className="text-muted-foreground max-w-xs">
-            Haz búsquedas para poblar el ranking con candidatas.
+            {searched
+              ? "Prueba a ampliar los filtros o cambiar la palabra de búsqueda."
+              : "Haz una búsqueda para empezar a poblarlo."}
           </p>
-        </div>
-      ) : rankCompanies ? (
-        <div className="grid grid-cols-1 gap-3">
-          {rankCompanies.map((c) => (
-            <CompanyCard key={c.cif ?? c.slug} company={c} />
-          ))}
-        </div>
-      ) : loading ? (
-        <div className="grid grid-cols-1 gap-3">
-          {[...Array(6)].map((_, i) => (
-            <CompanyCardSkeleton key={i} />
-          ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3">
-          {results.map((c) => (
+          {shownList.map((c) => (
             <CompanyCard key={c.cif ?? c.slug} company={c} />
           ))}
         </div>
