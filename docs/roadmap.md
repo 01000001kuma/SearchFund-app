@@ -303,3 +303,22 @@ search-fund-tool/
 - **Issues de auditoría**: 106 identificados → 0 pendientes (12C + 23A + 35M + 26B + 10 test gaps)
 - **Pendiente solo**: GitHub push (problema de cuenta), builds .exe/.app (en otra máquina)
 - **No urgentes**: Import CSV, filter config vía LLM, búsqueda programada, EmpresiF
+## Fase v1.2 — Mejoras y Optimizaciones (propuesta 2026-09-09)
+
+### Prioridad alta (negocio)
+1. **Reportes PDF/Excel Finance-Grade** — plantillas profesionales para Cabiedes (export.py + vista previa en frontend).
+2. **EmpresiF real** — completar `empresief.py` (placeholder listo) para EBITDA/facturación reales → filtros financieros y scores 100% operativos.
+3. **Empaquetado completo del AppImage** — bundling del backend Python (`extraResources` + arranque sin venv externo) y regenerar release v1.1 con los fixes.
+
+### Prioridad media (rendimiento/cuota)
+4. **Ahorro de cuota OpenMercantil**: construir empresas desde los ítems de `/search` (traen provincia/CNAE/acts) y pedir detalle solo bajo demanda → ~1 llamada por búsqueda en vez de 21.
+5. **Modelo LLM**: instalar/encadenar un modelo pequeño local (gemma3:4b ya descargado) o API de pago para extracciones.
+6. **Búsqueda diaria automática**: systemd timer / programador interno para `/api/search/daily` (hoy manual).
+7. **Re-score en cascada**: al guardar datos financieros de una empresa, recalcular y persistir su score (ya lo hace) + opción de recalcular todo el caché.
+8. **Import CSV** de empresas/contactos.
+
+### Prioridad baja (pulido)
+9. Paginación "cargar más" en la vista de ranking.
+10. Contador de miembros por lista en el sidebar; marcar en el diálogo las listas que ya contienen la empresa.
+11. Historial de búsquedas accesible desde la UI (`/api/search-history` ya existe).
+12. Filtro por sector/CNAE en el panel de filtros (backend + UI).
