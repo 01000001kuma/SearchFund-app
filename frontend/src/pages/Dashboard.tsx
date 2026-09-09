@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
-import { Building2, ListChecks, Search, FileText, BarChart3, Sparkles, Loader2, CheckCircle2 } from "lucide-react"
+import { Building2, ListChecks, Search, FileText, BarChart3, Sparkles, Loader2, CheckCircle2, TrendingUp } from "lucide-react"
 import { api } from "@/lib/api"
 import type { Stats, DailyStats } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
@@ -49,6 +49,7 @@ export function Dashboard() {
     {
       label: "Empresas Encontradas",
       value: stats?.total_companies ?? 0,
+      today: stats?.companies_today ?? 0,
       icon: Building2,
       to: "/candidatas",
       color: "text-blue-500",
@@ -56,6 +57,7 @@ export function Dashboard() {
     {
       label: "EBITDA Disponibles",
       value: stats?.companies_with_financial_data ?? 0,
+      today: stats?.financial_today ?? 0,
       icon: FileText,
       to: "/candidatas",
       color: "text-emerald-500",
@@ -109,6 +111,11 @@ export function Dashboard() {
                 <p className="mt-2 text-3xl font-bold tracking-tight">
                   {loading ? "…" : c.value}
                 </p>
+                {!loading && c.today != null && c.today > 0 && (
+                  <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                    <TrendingUp className="size-3" />+{c.today} hoy
+                  </span>
+                )}
               </CardContent>
             </Card>
           </Link>

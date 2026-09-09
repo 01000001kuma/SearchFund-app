@@ -430,6 +430,13 @@ class Database:
         ).fetchone()[0]
         total_lists = conn.execute("SELECT COUNT(*) FROM lists").fetchone()[0]
         total_searches = conn.execute("SELECT COUNT(*) FROM search_history").fetchone()[0]
+        companies_today = conn.execute(
+            "SELECT COUNT(*) FROM companies WHERE date(created_at, 'localtime') = date('now', 'localtime')"
+        ).fetchone()[0]
+        financial_today = conn.execute(
+            "SELECT COUNT(*) FROM companies WHERE has_financial_data = 1 "
+            "AND date(last_updated, 'localtime') = date('now', 'localtime')"
+        ).fetchone()[0]
         dist_row = conn.execute(
             """
             SELECT
@@ -446,6 +453,8 @@ class Database:
             "total_lists": total_lists,
             "total_searches": total_searches,
             "score_distribution": {"alto": dist_row[0], "medio": dist_row[1], "bajo": dist_row[2]},
+            "companies_today": companies_today,
+            "financial_today": financial_today,
         }
 
     async def get_stats(self):

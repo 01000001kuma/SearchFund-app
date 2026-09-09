@@ -175,3 +175,12 @@ def test_company_from_search_item_item_invalido():
     src = OpenMercantilSource()
     assert src._company_from_search_item({"slug": ""}) is None
     assert src._company_from_search_item({"slug": "x", "name": "", "cif": ""}) is None
+
+
+def test_stats_incluye_conteos_de_hoy():
+    resp = client.get("/api/stats")
+    body = resp.json()
+    assert "companies_today" in body
+    assert "financial_today" in body
+    assert body["companies_today"] >= 0
+    assert body["financial_today"] >= 0
