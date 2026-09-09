@@ -21,6 +21,12 @@
 | 10. Auditoría | ✅ Completada | 106 issues corregidos |
 
 ## Log de Cambios Recientes
+### 2026-09-09 — Búsqueda diaria automática (v1.2 #6) ✅
+- ⏰ **Timer systemd** `search-fund-daily.timer` (08:00 ± 5min, `Persistent=true` recupera ejecuciones perdidas si el equipo estaba apagado) + servicio oneshot `search-fund-daily.service`.
+- 📜 `scripts/daily-search.sh`: llama a `POST /api/search/daily`, registra resultado en `data/daily-search.log` y si el backend no responde lo arranca y reintenta 3× (30s).
+- 📊 Coste por ejecución: ~4 llamadas de cuota (1 por sector, gracias a la optimización anterior). Ejecución manual verificada: exit 0, deduplicación correcta (0 nuevas cuando ya está todo en caché), 65 empresas en BD sin duplicados.
+- Verificado: ruff limpio, 38/38 pytest, tsc 0 errores, build OK, timer activo y habilitado.
+
 ### 2026-09-09 — Optimización de cuota (v1.2 #4) ✅
 - 🔋 **Búsqueda con 1 llamada de API en vez de 21**: `openmercantil.search_companies` ahora construye las empresas directamente desde los ítems de `/search` (`_company_from_search_item`: nombre, CIF, slug, provincia, CNAE sección·código, acts_count, first/last_seen) **sin** pedir el detalle de cada slug. Verificado en vivo: `journalctl` muestra exactamente 1 llamada a openmercantil por búsqueda.
 - El detalle (administradores, dirección, web, teléfono) se obtiene **bajo demanda** al abrir la ficha (`GET /api/company/{slug}` → 1 llamada) y ahí se re-scorea y persiste.

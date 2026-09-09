@@ -313,7 +313,7 @@ search-fund-tool/
 ### Prioridad media (rendimiento/cuota)
 4. **Ahorro de cuota OpenMercantil**: construir empresas desde los ítems de `/search` (traen provincia/CNAE/acts) y pedir detalle solo bajo demanda → ~1 llamada por búsqueda en vez de 21.
 5. **Modelo LLM**: instalar/encadenar un modelo pequeño local (gemma3:4b ya descargado) o API de pago para extracciones.
-6. **Búsqueda diaria automática**: systemd timer / programador interno para `/api/search/daily` (hoy manual).
+6. ~~**Búsqueda diaria automática**~~ ✅ HECHA (2026-09-09): timer systemd + scripts/daily-search.sh.
 7. **Re-score en cascada**: al guardar datos financieros de una empresa, recalcular y persistir su score (ya lo hace) + opción de recalcular todo el caché.
 8. **Import CSV** de empresas/contactos.
 
