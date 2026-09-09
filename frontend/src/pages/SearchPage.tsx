@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useMemo, type FormEvent } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Search, Loader2, Inbox, Trophy, Building2 } from "lucide-react"
+import { Inbox, Trophy, Building2 } from "lucide-react"
 import { api } from "@/lib/api"
 import type { Company, ScoreDistribution } from "@/lib/types"
 import { Input } from "@/components/ui/input"
@@ -48,7 +48,6 @@ function sectorOf(c: Company): string | null {
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   // Estado inicial hidratado desde la URL (persistente al recargar y compartible)
-  const [query, setQuery] = useState(() => searchParams.get("q") ?? "")
   const [filters, setFilters] = useState<Filters>(() => ({
     province: searchParams.get("provincia") ?? "all",
     scoreRange: searchParams.get("score") ?? "all",
@@ -180,19 +179,13 @@ export function SearchPage() {
     void loadDistribution()
   }
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    const q = query.trim()
-    if (!q) return
-    doSearch(q, filters)
-  }
-
   function handleFiltersChange(f: Filters) {
     setFilters(f)
-    if (searched && query.trim()) {
+    const q = searchParams.get("q")
+    if (searched && q) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
-        doSearch(query.trim(), f)
+        doSearch(q, f)
       }, 400)
     }
   }
@@ -231,7 +224,7 @@ export function SearchPage() {
       <header>
         <h1 className="text-3xl font-bold tracking-tight">Filtrar Empresas</h1>
         <p className="text-muted-foreground">
-          Filtra por sector y puntuación, o busca nuevas empresas en el Registro Mercantil.
+          Filtra las empresas encontradas por sector, puntuación y datos financieros.
         </p>
       </header>
 
@@ -287,21 +280,6 @@ export function SearchPage() {
         </div>
       )}
 
-      {/* Búsqueda compacta: descubre nuevas empresas en el Registro Mercantil */}
-      <form onSubmit={handleSubmit} className="flex gap-2" role="search">
-        <Input
-          placeholder="Buscar nuevas empresas: industrial, alimentación, transporte..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="max-w-md"
-          aria-label="Texto de búsqueda"
-        />
-        <Button type="submit" disabled={loading || !query.trim()}>
-          {loading ? <Loader2 className="animate-spin" /> : <Search />}
-          Buscar
-        </Button>
-      </form>
-
       <FiltersBar
         filters={filters}
         onChange={handleFiltersChange}
@@ -331,7 +309,7 @@ export function SearchPage() {
 
       {searched && !loading && !error && total > 0 && (
         <p className="text-sm text-muted-foreground">
-          {total} resultado{total === 1 ? "" : "s"} para "{query.trim()}"
+          {total} resultado{total === 1 ? "" : "s"} para la búsqueda
           {total > results.length && ` · mostrando ${results.length}`}
         </p>
       )}
