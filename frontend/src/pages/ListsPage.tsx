@@ -25,6 +25,8 @@ export function ListsPage() {
   const [newName, setNewName] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CompanyList | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<CompanyList | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   const loadLists = useCallback(async (signal?: AbortSignal) => {
@@ -87,6 +89,23 @@ export function ListsPage() {
     }
   }
 
+  async function removeList(l: CompanyList) {
+    try {
+      await api.deleteList(l.id)
+      setDeleteConfirm(null)
+      const remaining = await loadLists()
+      if (selectedId === l.id) {
+        if (remaining.length > 0) await loadList(remaining[0].id)
+        else {
+          setSelected(null)
+          setSelectedId(null)
+        }
+      }
+    } catch {
+      setError("Error al eliminar la lista")
+    }
+  }
+
   async function handleExportExcel() {
     if (!selected) return
     try {
@@ -139,22 +158,34 @@ export function ListsPage() {
               </p>
             )}
             {lists.map((l) => (
-              <button
+              <div
                 key={l.id}
-                onClick={() => loadList(l.id)}
                 className={
                   selectedId === l.id
-                    ? "w-full rounded-md border border-primary bg-primary/10 p-3 text-left"
-                    : "w-full rounded-md border p-3 text-left hover:bg-accent"
+                    ? "group/list relative rounded-md border border-primary bg-primary/10 p-3"
+                    : "group/list relative rounded-md border p-3 hover:bg-accent"
                 }
               >
-                <p className="min-w-0 break-all text-sm font-medium">{l.name}</p>
-                {l.description && (
-                  <p className="min-w-0 break-words text-xs text-muted-foreground">
-                    {l.description}
-                  </p>
-                )}
-              </button>
+                <button
+                  onClick={() => loadList(l.id)}
+                  className="w-full pr-7 text-left"
+                  aria-label={`Abrir lista ${l.name}`}
+                >
+                  <p className="min-w-0 break-all text-sm font-medium">{l.name}</p>
+                  {l.description && (
+                    <p className="min-w-0 break-words text-xs text-muted-foreground">
+                      {l.description}
+                    </p>
+                  )}
+                </button>
+                <button
+                  onClick={() => setDeleteTarget(l)}
+                  aria-label={`Eliminar lista ${l.name}`}
+                  className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover/list:opacity-100"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
             ))}
             <div className="flex gap-2 pt-2">
               <Input
@@ -231,6 +262,52 @@ export function ListsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Confirmación 1 */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar la lista "{deleteTarget?.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará la lista junto con las empresas que contenga. Se te pedirá
+              una confirmación final antes de borrar nada.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setDeleteConfirm(deleteTarget)
+                setDeleteTarget(null)
+              }}
+            >
+              Continuar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmación 2 (final) */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(o) => !o && setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmación final</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Quieres eliminar definitivamente la lista "{deleteConfirm?.name}" y todas sus
+              empresas guardadas? Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteConfirm && removeList(deleteConfirm)}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Eliminar definitivamente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
