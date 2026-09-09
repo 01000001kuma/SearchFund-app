@@ -21,6 +21,29 @@
 | 10. Auditoría | ✅ Completada | 106 issues corregidos |
 
 ## Log de Cambios Recientes
+### 2026-09-09 (tarde) — Auditoría de bugs y fallos
+Hallazgos y correcciones:
+- 🔴 **HIGH — Build Electron roto**: `package.json` incluía `electron/main.js`/`preload.js` pero los archivos reales son `main.cjs`/`preload.cjs`. La próxima build del AppImage habría salido sin proceso principal. Corregido. (Pendiente aparte: bundling del backend Python en el empaquetado — hoy requiere backend externo en :8000.)
+- 🔴 **HIGH — LLM rápido inexistente**: `OLLAMA_FAST_MODEL=llama3.2:3b` ya no existe en Ollama → 404 en extracciones/scoring LLM. Fix: fallback en runtime (`LLMEngine.fast_complete` reintenta con el modelo principal si el rápido no existe) + default vacío en config (usa el modelo principal) + `.env.example` actualizado.
+- 🔴 **HIGH — `candidate_search.search` ignoraba `max_analyze_per_sector`**: analizaba TODAS las empresas con LLM (minutos de espera). Fix: respeta el límite (default 8) y devuelve `analyzed`.
+- 🟠 **MEDIUM — llamada desperdiciada por CIF**: `openmercantil.get_company` intentaba slug antes que CIF (1 llamada de cuota perdida por detalle). Fix: detecta CIF (`^[A-Z][0-9]{8}$`) y va directo a la búsqueda por CIF.
+- 🟠 **MEDIUM — Score.tsx**: umbrales (70/50/30) desalineados de las bandas reales (80/60/40/20) y colores light-only → alineados + variantes dark.
+- 🟠 **MEDIUM — CNAE en score**: keyword "SaaS" nunca matcheaba tras `.upper()`; los CNAE son códigos/letras de sección, no nombres. Fix: keywords normalizadas + matching por sección (C industria, H transporte, J IT, M servicios B2B) y enrich guarda `"{sección} · {código}"`. Re-score de 55 empresas reales en BD: distribución pasó de 9/32/24 a 21/23/21.
+- 🐛 **BD: refresh escribió en clave inexistente** (`basic_info` en JSON de Company, ignorado por Pydantic) → cnae/provincia no persistían en refrescos manuales. Corregido apuntando a campos raíz del modelo; re-score aplicado.
+
+
+### 2026-09-09 (Sección Filtrar Empresas — mejoras UX + filtros financieros)
+- ✅ **Filtros financieros reales**: `POST/GET /api/search` acepta `ebitda_min/max` y `revenue_min/max` (€). Lógica extraída a `matches_financial_filters()` (pura y testeable).
+- ✅ **FiltersBar v2**: Score por bandas reales del algoritmo (80-100/60-79/40-59/20-39/0-19, sin el hack `max:39`), EBITDA y Facturación con bandas "objetivo" (criterios Cabiedes), provincias 21→52, contador duplicado eliminado.
+- ✅ **Estado en URL** (`?q=&provincia=&score=&ebitda=&rev=`): persistente al recargar y compartible; restaura la búsqueda al montar.
+- ✅ **Dark mode**: banners de error/aviso con tokens semánticos (antes hardcodeados bg-red-50).
+- ✅ **Tests**: +5 (32/32 pytest). tsc strict 0 errores, ruff limpio, vite build OK.
+- ⚙️ **Infra**: servicio systemd `search-fund-api` reorientado de la copia obsoleta `~/Work/search-fund-proyecto` a `~/Projects/search-fund-proyecto` (copias separadas; Work quedó desfasada).
+- ⚠️ **BD mixta**: 30 empresas = 10 dummy (seed_dummy.py, financieros manuales) + 20 reales OpenMercantil (sin EBITDA → score solo-BORME, cap ~55). **Decisión: se dejan tal cual**; al acabar el desarrollo se configurarán todas las APIs (EmpresiF, etc.) para búsquedas 100% reales.
+- ⚠️ **Pendiente descubierto**: `OLLAMA_FAST_MODEL=llama3.2:3b` ya no existe en Ollama (actuales: llama3.1:8b, gemma3:4b, glm-5.3:cloud). Sin `backend/.env` — crear al configurar APIs.
+- ✅ **Bug de provincia corregido** (openmercantil.py): el endpoint `/search` devuelve provincia/CNAE/acts_count, pero el código lo descartaba y consultaba el detalle por slug (que NO trae provincia y consume cuota). Ahora se fusiona el ítem de búsqueda con el detalle (cacheado y fresco) vía `_enrich_with_search_item()`. Orchestrator ahora mapea `cnae`. Las 20 empresas reales cacheadas refrescadas con provincia/CNAE (1 llamada de search, sin gastar detalle). Verificado: provincia+score filtran OK sobre datos reales; EBITDA/Facturación → 0 hasta EmpresiF/datos manuales.
+- ✅ **Chips de ranking (v2)**: Bajo/Medio/Alto ahora son un navegador del ranking completo de la BD (independiente de la búsqueda de texto): siempre visibles con conteo en vivo desde `GET /api/stats` (`score_distribution` por SQL) y al pulsar muestran la lista de empresas de ese rango vía `GET /api/companies` (ahora soporta `max_score`+`has_financial_data` y `total` filtrado real; nuevo `database.count_companies()`). Vista `?rango=` persistente en URL; una búsqueda de texto la sustituye. Filtros EBITDA/facturación aplicados en cliente sobre la lista de ranking. Menú lateral: ítem renombrado a "Filtrar Empresas". `score.py` limpio de ruff (E701). Tests 36/36. UI chips: etiqueta "Ranking de adquisición" entre Filtros y los chips; colores por banda (Bajo rojo / Medio naranja / Alto verde) con fondo sólido y texto negro, badge de conteo con fondo blanco; estado activo con ✓ (evita confusión con el hover).
+
 
 ### 2026-09-08 (Mejoras Visuales y Funcionales v1.1)
 - ✅ **Búsqueda Diaria**: Implementado endpoint `/api/search/daily` para descubrir automáticamente nuevos candidatos sin duplicar.

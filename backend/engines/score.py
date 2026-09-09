@@ -130,8 +130,11 @@ class ScoreCalculator:
         # --- CNAE Compatible ---
         cnae_points = 0
         if company.cnae:
-            compatible_keywords = ("INDUSTRIAL", "LOGISTICA", "B2B", "SERVICIOS", "SaaS", "MANUFACTURA")
-            if any(k in company.cnae.upper() for k in compatible_keywords):
+            cnae_txt = company.cnae.upper()
+            compatible_keywords = ("INDUSTRIAL", "LOGISTICA", "B2B", "SERVICIOS", "SAAS", "MANUFACTURA")
+            # Secciones CNAE compatibles: C industria, H transporte, J IT/SaaS,
+            # M servicios profesionales (B2B)
+            if any(k in cnae_txt for k in compatible_keywords) or cnae_txt[:1] in ("C", "H", "J", "M"):
                 cnae_points = self.POINTS['cnae_compatible']
         
         points += cnae_points
@@ -188,10 +191,14 @@ class ScoreCalculator:
         return min(points, 100)
 
     def _get_interpretation(self, score: float) -> str:
-        if score >= 80: return "MUY BUEN CANDIDATO - Alta probabilidad de transición"
-        if score >= 60: return "BUEN CANDIDATO - Posible candidato a investigar"
-        if score >= 40: return "CANDIDATO MODERADO - Requiere más información"
-        if score >= 20: return "CANDIDATO BAJO - Poca probabilidad de venta"
+        if score >= 80:
+            return "MUY BUEN CANDIDATO - Alta probabilidad de transición"
+        if score >= 60:
+            return "BUEN CANDIDATO - Posible candidato a investigar"
+        if score >= 40:
+            return "CANDIDATO MODERADO - Requiere más información"
+        if score >= 20:
+            return "CANDIDATO BAJO - Poca probabilidad de venta"
         return "NO RECOMENDADO - No parece candidato"
 
     def _build_financial_breakdown(self, company: Company, score: Optional[float]) -> Optional[Dict]:
@@ -207,8 +214,12 @@ class ScoreCalculator:
     def get_score_indicators(self, company: Company) -> list:
         indicators = []
         if company.administrators:
-            has_honorific = any(any(p in a.name.upper() for p in ("DON ", "DOÑA ")) for a in company.administrators)
-            if has_honorific: indicators.append("Administradores con perfil senior (Don/Doña)")
+            has_honorific = any(
+                any(p in a.name.upper() for p in ("DON ", "DOÑA "))
+                for a in company.administrators
+            )
+            if has_honorific:
+                indicators.append("Administradores con perfil senior (Don/Doña)")
         
         if company.financial and company.financial.is_complete():
             indicators.append(f"EBITDA: {company.financial.format_ebitda()}")

@@ -129,6 +129,7 @@ class DataOrchestrator:
             address=basic.get('address'),
             city=basic.get('city'),
             province=basic.get('province'),
+            cnae=basic.get('cnae'),
             postal_code=basic.get('postal_code'),
             founded_date=basic.get('founded_date') or None,
             website=basic.get('website'),

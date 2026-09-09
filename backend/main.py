@@ -17,6 +17,7 @@ from .engines.contact_enrichment import contact_enricher
 from .engines.export import export_pdf, export_excel
 from .storage.database import Database
 from .models.financial import FinancialData
+from .models.company import Company
 from .config import settings
 from contextlib import asynccontextmanager
 
@@ -78,8 +79,28 @@ class SearchRequest(BaseModel):
     min_score: Optional[float] = Field(None, ge=0, le=100)
     max_score: Optional[float] = Field(None, ge=0, le=100)
     has_financial_data: Optional[bool] = None
+    ebitda_min: Optional[float] = Field(None, ge=0)
+    ebitda_max: Optional[float] = Field(None, ge=0)
+    revenue_min: Optional[float] = Field(None, ge=0)
+    revenue_max: Optional[float] = Field(None, ge=0)
     limit: int = Field(100, ge=1, le=1000)
     offset: int = Field(0, ge=0)
+
+
+def matches_financial_filters(company: Company, request: SearchRequest) -> bool:
+    """True si la empresa pasa los filtros financieros (EBITDA/facturación en €).
+    Si se pide un rango y el dato no está disponible, la empresa se excluye.
+    """
+    fin = company.financial
+    if request.ebitda_min is not None and (fin.ebitda is None or fin.ebitda < request.ebitda_min):
+        return False
+    if request.ebitda_max is not None and (fin.ebitda is None or fin.ebitda > request.ebitda_max):
+        return False
+    if request.revenue_min is not None and (fin.revenue is None or fin.revenue < request.revenue_min):
+        return False
+    if request.revenue_max is not None and (fin.revenue is None or fin.revenue > request.revenue_max):
+        return False
+    return True
 
 
 class ListCreateRequest(BaseModel):
@@ -323,6 +344,7 @@ async def search_companies(request: SearchRequest):
             "limit": request.limit,
             "results": [],
             "warning": None,
+            "score_distribution": {"bajo": 0, "medio": 0, "alto": 0},
         }
 
     companies = await orchestrator.search(query, cached_lookup=cached_lookup)
@@ -333,15 +355,14 @@ async def search_companies(request: SearchRequest):
         companies = await database.search_local_companies(query, request.limit)
 
     results = []
+    distribution = {"bajo": 0, "medio": 0, "alto": 0}
     for company in companies:
         score = score_calculator.calculate(company)
         company.score = score['total']
         company.score_breakdown = score
 
-        if request.min_score is not None and company.score < request.min_score:
-            continue
-        if request.max_score is not None and company.score > request.max_score:
-            continue
+        # Filtros independientes del score primero (la distribución de bandas
+        # debe contar todas las empresas encontradas, sin aplicar el filtro de score)
         if request.province and company.province != request.province:
             continue
         if request.has_financial_data is not None:
@@ -349,6 +370,22 @@ async def search_companies(request: SearchRequest):
                 continue
             if not request.has_financial_data and company.has_financial_data():
                 continue
+
+        if not matches_financial_filters(company, request):
+            continue
+
+        s = company.score or 0
+        if s >= 60:
+            distribution["alto"] += 1
+        elif s >= 40:
+            distribution["medio"] += 1
+        else:
+            distribution["bajo"] += 1
+
+        if request.min_score is not None and company.score < request.min_score:
+            continue
+        if request.max_score is not None and company.score > request.max_score:
+            continue
 
         results.append(company)
 
@@ -370,6 +407,7 @@ async def search_companies(request: SearchRequest):
         "limit": request.limit,
         "results": paginated,
         "warning": warning,
+        "score_distribution": distribution,
     }
 
 
@@ -378,7 +416,12 @@ async def search_get(
     q: str = Query(None, description="Texto de búsqueda"),
     province: str = Query(None, description="Filtrar por provincia"),
     min_score: float = Query(None, description="Score mínimo"),
+    max_score: float = Query(None, description="Score máximo"),
     has_financial_data: bool = Query(None, description="Solo con datos financieros"),
+    ebitda_min: float = Query(None, ge=0, description="EBITDA mínimo (€)"),
+    ebitda_max: float = Query(None, ge=0, description="EBITDA máximo (€)"),
+    revenue_min: float = Query(None, ge=0, description="Facturación mínima (€)"),
+    revenue_max: float = Query(None, ge=0, description="Facturación máxima (€)"),
     limit: int = Query(100, description="Límite de resultados"),
     offset: int = Query(0, description="Offset para paginación"),
 ):
@@ -386,7 +429,12 @@ async def search_get(
         query=q,
         province=province,
         min_score=min_score,
+        max_score=max_score,
         has_financial_data=has_financial_data,
+        ebitda_min=ebitda_min,
+        ebitda_max=ebitda_max,
+        revenue_min=revenue_min,
+        revenue_max=revenue_max,
         limit=limit,
         offset=offset,
     )
@@ -403,8 +451,13 @@ async def get_lists():
 
 @app.post("/api/lists")
 async def create_list(request: ListCreateRequest):
-    list_id = await database.create_list(request.name, request.description)
-    return {"id": list_id, "name": request.name}
+    name = request.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="El nombre de la lista no puede estar vacío")
+    if len(name) > 200:
+        raise HTTPException(status_code=422, detail="El nombre de la lista es demasiado largo (máx. 200)")
+    list_id = await database.create_list(name, request.description)
+    return {"id": list_id, "name": name}
 
 
 @app.get("/api/lists/{list_id}")
@@ -419,6 +472,10 @@ async def get_list(list_id: int):
 
 @app.post("/api/lists/{list_id}/items")
 async def add_to_list(list_id: int, request: AddToListRequest):
+    if not await database.get_list(list_id):
+        raise HTTPException(status_code=404, detail="Lista no encontrada")
+    if not await database.get_company(request.cif):
+        raise HTTPException(status_code=404, detail="La empresa no está en el caché; búscala primero")
     added = await database.add_to_list(list_id, request.cif, request.notes)
     if not added:
         raise HTTPException(status_code=409, detail="La empresa ya está en la lista")
@@ -466,17 +523,23 @@ async def list_companies(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     min_score: Optional[float] = Query(None, ge=0, le=100),
+    max_score: Optional[float] = Query(None, ge=0, le=100),
     province: Optional[str] = None,
+    has_financial_data: Optional[bool] = None,
 ):
-    """Listar todas las empresas en caché con paginación y filtros"""
+    """Listar empresas en caché con paginación y filtros (para el ranking)."""
     companies = await database.search_companies(
-        min_score=min_score, province=province,
+        min_score=min_score, max_score=max_score, province=province,
+        has_financial_data=has_financial_data,
         limit=limit, offset=offset,
     )
-    all_count = await database.get_stats()
+    filtered_count = await database.count_companies(
+        min_score=min_score, max_score=max_score, province=province,
+        has_financial_data=has_financial_data,
+    )
     return {
         "companies": companies,
-        "total": all_count["total_companies"],
+        "total": filtered_count,
         "offset": offset,
         "limit": limit,
     }

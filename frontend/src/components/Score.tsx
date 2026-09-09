@@ -1,10 +1,13 @@
 import { cn } from "@/lib/utils"
 
+// Bandas alineadas con el algoritmo de score (backend/engines/score.py):
+// 80-100 muy bueno, 60-79 bueno, 40-59 moderado, 20-39 bajo, 0-19 no recomendado
 function scoreColor(score: number | null | undefined): string {
   if (score == null) return "text-muted-foreground"
-  if (score >= 70) return "text-emerald-600"
-  if (score >= 50) return "text-amber-600"
-  if (score >= 30) return "text-orange-600"
+  if (score >= 80) return "text-emerald-600"
+  if (score >= 60) return "text-green-600"
+  if (score >= 40) return "text-amber-600"
+  if (score >= 20) return "text-orange-600"
   return "text-red-600"
 }
 
@@ -15,13 +18,35 @@ function scoreLabel(score: number | null | undefined): {
 } {
   if (score == null)
     return { text: "Sin datos", color: "text-muted-foreground", bg: "bg-muted" }
-  if (score >= 70)
-    return { text: "Alto", color: "text-emerald-700", bg: "bg-emerald-100" }
-  if (score >= 50)
-    return { text: "Medio", color: "text-amber-700", bg: "bg-amber-100" }
-  if (score >= 30)
-    return { text: "Medio-bajo", color: "text-orange-700", bg: "bg-orange-100" }
-  return { text: "Bajo", color: "text-red-700", bg: "bg-red-100" }
+  if (score >= 80)
+    return {
+      text: "Muy bueno",
+      color: "text-emerald-700 dark:text-emerald-400",
+      bg: "bg-emerald-100 dark:bg-emerald-500/15",
+    }
+  if (score >= 60)
+    return {
+      text: "Bueno",
+      color: "text-green-700 dark:text-green-400",
+      bg: "bg-green-100 dark:bg-green-500/15",
+    }
+  if (score >= 40)
+    return {
+      text: "Moderado",
+      color: "text-amber-700 dark:text-amber-400",
+      bg: "bg-amber-100 dark:bg-amber-500/15",
+    }
+  if (score >= 20)
+    return {
+      text: "Bajo",
+      color: "text-orange-700 dark:text-orange-400",
+      bg: "bg-orange-100 dark:bg-orange-500/15",
+    }
+  return {
+    text: "No recomendado",
+    color: "text-red-700 dark:text-red-400",
+    bg: "bg-red-100 dark:bg-red-500/15",
+  }
 }
 
 export function ScoreCircle({

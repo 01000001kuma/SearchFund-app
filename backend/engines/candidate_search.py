@@ -153,5 +153,11 @@ class CandidateSearch:
                     seen_cifs.add(c.cif)
                     all_companies.append(c)
 
-        ranked = await self.score_candidates(all_companies, max_analyze=len(all_companies))
-        return {"results": ranked, "warnings": warnings, "total_companies": len(all_companies)}
+        # Respetar el límite pedido (por defecto 8); el análisis LLM es lento en CPU
+        ranked = await self.score_candidates(all_companies, max_analyze=max_analyze_per_sector)
+        return {
+            "results": ranked,
+            "warnings": warnings,
+            "total_companies": len(all_companies),
+            "analyzed": min(max_analyze_per_sector, len(all_companies)),
+        }

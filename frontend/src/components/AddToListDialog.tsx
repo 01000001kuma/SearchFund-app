@@ -146,7 +146,7 @@ export function AddToListDialog({ company }: { company: Company }) {
         </div>
 
         {message && (
-          <p className={`text-sm ${isError ? "text-red-600" : "text-emerald-600"}`}>
+          <p className={`text-sm ${isError ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"}`}>
             {message}
           </p>
         )}

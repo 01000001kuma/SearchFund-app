@@ -160,8 +160,22 @@ class LLMEngine:
         return await self.provider.complete(prompt, **kwargs)
 
     async def fast_complete(self, prompt, **kwargs) -> str:
-        """Generación con el modelo rápido (extracción estructurada)."""
-        return await self.fast_provider.complete(prompt, **kwargs)
+        """Generación con el modelo rápido (extracción estructurada).
+
+        Si el modelo rápido no existe en Ollama (p. ej. fue borrado o el
+        default cambió), reintenta una vez con el modelo principal.
+        """
+        try:
+            return await self.fast_provider.complete(prompt, **kwargs)
+        except LLMError as e:
+            if "not found" in str(e) and self.fast_provider is not self.provider:
+                logger.warning(
+                    "Modelo rápido %r no disponible; usando el modelo principal %r",
+                    getattr(self.fast_provider, "model", "?"), self.model,
+                )
+                self.fast_provider = self.provider
+                return await self.provider.complete(prompt, **kwargs)
+            raise
 
     async def health(self) -> Dict[str, Any]:
         """Comprobar que el LLM está disponible."""

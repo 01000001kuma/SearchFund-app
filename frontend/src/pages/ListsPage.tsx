@@ -123,7 +123,7 @@ export function ListsPage() {
         </header>
 
         {error && (
-          <div className="flex items-center justify-between rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+          <div className="flex items-center justify-between rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             <span>{error}</span>
             <Button variant="ghost" size="sm" onClick={() => setError(null)}>
               Cerrar
@@ -148,9 +148,9 @@ export function ListsPage() {
                     : "w-full rounded-md border p-3 text-left hover:bg-accent"
                 }
               >
-                <p className="text-sm font-medium">{l.name}</p>
+                <p className="min-w-0 break-all text-sm font-medium">{l.name}</p>
                 {l.description && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="min-w-0 break-words text-xs text-muted-foreground">
                     {l.description}
                   </p>
                 )}
@@ -178,7 +178,7 @@ export function ListsPage() {
       <div className="lg:col-span-2">
         <Card>
           <CardHeader>
-            <CardTitle>
+            <CardTitle className="min-w-0 truncate">
               {selected ? selected.list.name : "Selecciona una lista"}
             </CardTitle>
             {selected && (

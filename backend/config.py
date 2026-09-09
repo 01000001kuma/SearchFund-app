@@ -43,7 +43,7 @@ class LLMSettings:
     ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "llama3.1:8b"))
     # Modelo "rápido" para extracciones estructuradas (contactos, fit score),
     # más pequeño y veloz en CPU. Vacío => se reutiliza el modelo principal.
-    ollama_fast_model: str = field(default_factory=lambda: os.getenv("OLLAMA_FAST_MODEL", "llama3.2:3b"))
+    ollama_fast_model: str = field(default_factory=lambda: os.getenv("OLLAMA_FAST_MODEL", ""))  # vacío = usa el modelo principal
 
     # API de pago (OpenAI-compatible)
     openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))

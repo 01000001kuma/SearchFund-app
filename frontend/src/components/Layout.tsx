@@ -6,7 +6,7 @@ const navItems = [
   { to: "/", label: "Panel de Control", icon: LayoutDashboard, end: true },
   { to: "/chat", label: "Agente", icon: MessageSquare },
   { to: "/candidatas", label: "Candidatas", icon: Sparkles },
-  { to: "/buscar", label: "Filtrar", icon: Filter },
+  { to: "/buscar", label: "Filtrar Empresas", icon: Filter },
   { to: "/listas", label: "Listas", icon: List },
 ]
 

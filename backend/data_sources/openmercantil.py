@@ -1,5 +1,6 @@
 import httpx
 import logging
+import re
 import asyncio
 from typing import Optional, Dict, Any, List
 from .base import DataSource
@@ -7,6 +8,7 @@ from .base import DataSource
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://openmercantil.es/api/v1"
+_CIF_PATTERN = re.compile(r"^[A-Z][0-9]{8}$")
 
 
 class RateLimitError(Exception):
@@ -29,6 +31,7 @@ def company_to_internal_format(company) -> Dict:
             "address": company.address,
             "city": company.city,
             "province": company.province,
+            "cnae": company.cnae,
             "postal_code": company.postal_code,
             "founded_date": company.founded_date,
             "website": company.website,
@@ -77,12 +80,21 @@ class OpenMercantilSource(DataSource):
 
     async def get_company(self, identifier: str) -> Optional[Dict[str, Any]]:
         try:
-            data = await self._get_by_slug(identifier)
+            # Un CIF (letra+8) no es un slug: saltar la llamada por slug,
+            # que gastaría cuota sin resultado.
+            if _CIF_PATTERN.match(identifier):
+                data = await self._search_by_cif(identifier)
+            else:
+                data = await self._get_by_slug(identifier)
+                if not data:
+                    data = await self._search_by_cif(identifier)
             if data:
                 return self._format_response(data)
-            data = await self._search_by_cif(identifier)
-            if data:
-                return self._format_response(data)
+            return None
+        except RateLimitError:
+            raise
+        except Exception as e:
+            logger.error(f"Error obteniendo empresa {identifier}: {e}")
             return None
         except RateLimitError:
             raise
@@ -139,6 +151,12 @@ class OpenMercantilSource(DataSource):
                 data = response.json()
                 items = data.get("items", [])
 
+                # Los ítems de búsqueda traen provincia/CNAE/actividad que el
+                # endpoint de detalle NO devuelve: se conservan para enriquecer.
+                search_items: Dict[str, Dict] = {
+                    it.get("slug"): it for it in items if it.get("slug")
+                }
+
                 slugs_to_fetch = []
                 cached_results = []
                 for result in items:
@@ -148,7 +166,12 @@ class OpenMercantilSource(DataSource):
                     if cached_lookup:
                         cached = await cached_lookup(slug)
                         if cached:
-                            cached_results.append(company_to_internal_format(cached))
+                            cached_results.append(
+                                self._enrich_with_search_item(
+                                    company_to_internal_format(cached),
+                                    search_items.get(slug),
+                                )
+                            )
                             continue
                     slugs_to_fetch.append(slug)
 
@@ -165,12 +188,15 @@ class OpenMercantilSource(DataSource):
                         *[_fetch_one(s) for s in slugs_to_fetch],
                         return_exceptions=True,
                     )
-                    for r in results:
+                    for slug, r in zip(slugs_to_fetch, results):
                         if isinstance(r, RateLimitError):
                             raise r
                         if r and not isinstance(r, Exception):
                             formatted = self._format_response(r)
                             if formatted:
+                                self._enrich_with_search_item(
+                                    formatted, search_items.get(slug)
+                                )
                                 fetched.append(formatted)
 
                 return cached_results + fetched
@@ -184,6 +210,29 @@ class OpenMercantilSource(DataSource):
         except Exception as e:
             logger.error(f"Error buscando empresas: {e}")
             return []
+
+    def _enrich_with_search_item(
+        self, formatted: Dict, item: Optional[Dict]
+    ) -> Dict:
+        """Añade provincia/CNAE/actividad del ítem de búsqueda al formato interno.
+        El endpoint /company/{slug} no devuelve province; /search sí."""
+        if not item:
+            return formatted
+        basic = formatted.setdefault("basic_info", {})
+        if not basic.get("province") and item.get("province"):
+            basic["province"] = item["province"]
+        if not basic.get("cnae") and (item.get("cnae_code") or item.get("cnae_section")):
+            sec, code = item.get("cnae_section"), item.get("cnae_code")
+            if sec and code:
+                basic["cnae"] = f"{sec} · {code}"
+            else:
+                basic["cnae"] = code or sec
+        borme = formatted.setdefault("borme", {})
+        if not borme.get("acts_count") and item.get("acts_count"):
+            borme["acts_count"] = item["acts_count"]
+        if not borme.get("last_activity") and item.get("last_seen"):
+            borme["last_activity"] = item["last_seen"]
+        return formatted
 
     def _format_response(self, raw_data: Dict) -> Optional[Dict]:
         if not raw_data:
@@ -219,6 +268,7 @@ class OpenMercantilSource(DataSource):
                 "address": company.get("address", ""),
                 "city": company.get("city", ""),
                 "province": company.get("province", ""),
+                "cnae": company.get("cnae") or company.get("cnae_code"),
                 "postal_code": company.get("postal_code", ""),
                 "founded_date": company.get("date_creation"),
                 "website": company.get("website"),

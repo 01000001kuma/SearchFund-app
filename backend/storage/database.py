@@ -200,7 +200,7 @@ class Database:
     async def search_local_companies(self, query: str, limit: int = 20):
         return await asyncio.to_thread(self._search_local_sync, query, limit)
 
-    def _search_companies_sync(self, min_score=None, province=None,
+    def _search_companies_sync(self, min_score=None, max_score=None, province=None,
                                has_financial_data=None, limit=100, offset=0):
         from ..models.company import Company
         conn = self._get_conn()
@@ -209,6 +209,9 @@ class Database:
         if min_score is not None:
             query += " AND score >= ?"
             params.append(min_score)
+        if max_score is not None:
+            query += " AND score <= ?"
+            params.append(max_score)
         if has_financial_data is not None:
             query += " AND has_financial_data = ?"
             params.append(1 if has_financial_data else 0)
@@ -227,11 +230,37 @@ class Database:
                 continue
         return companies
 
-    async def search_companies(self, min_score=None, province=None,
+    async def search_companies(self, min_score=None, max_score=None, province=None,
                                has_financial_data=None, limit=100, offset=0):
         return await asyncio.to_thread(
-            self._search_companies_sync, min_score, province,
+            self._search_companies_sync, min_score, max_score, province,
             has_financial_data, limit, offset,
+        )
+
+    def _count_companies_sync(self, min_score=None, max_score=None, province=None,
+                              has_financial_data=None):
+        conn = self._get_conn()
+        query = "SELECT COUNT(*) FROM companies WHERE 1=1"
+        params = []
+        if min_score is not None:
+            query += " AND score >= ?"
+            params.append(min_score)
+        if max_score is not None:
+            query += " AND score <= ?"
+            params.append(max_score)
+        if has_financial_data is not None:
+            query += " AND has_financial_data = ?"
+            params.append(1 if has_financial_data else 0)
+        if province is not None:
+            query += " AND province = ?"
+            params.append(province)
+        return conn.execute(query, params).fetchone()[0]
+
+    async def count_companies(self, min_score=None, max_score=None, province=None,
+                              has_financial_data=None):
+        return await asyncio.to_thread(
+            self._count_companies_sync, min_score, max_score, province,
+            has_financial_data,
         )
 
     def _get_all_companies_sync(self):
@@ -401,12 +430,22 @@ class Database:
         ).fetchone()[0]
         total_lists = conn.execute("SELECT COUNT(*) FROM lists").fetchone()[0]
         total_searches = conn.execute("SELECT COUNT(*) FROM search_history").fetchone()[0]
+        dist_row = conn.execute(
+            """
+            SELECT
+              COALESCE(SUM(CASE WHEN score >= 60 THEN 1 ELSE 0 END), 0) AS alto,
+              COALESCE(SUM(CASE WHEN score >= 40 AND score < 60 THEN 1 ELSE 0 END), 0) AS medio,
+              COALESCE(SUM(CASE WHEN score < 40 THEN 1 ELSE 0 END), 0) AS bajo
+            FROM companies WHERE score IS NOT NULL
+            """
+        ).fetchone()
         return {
             "total_companies": total_companies,
             "companies_with_financial_data": companies_with_financial,
             "companies_without_financial_data": total_companies - companies_with_financial,
             "total_lists": total_lists,
             "total_searches": total_searches,
+            "score_distribution": {"alto": dist_row[0], "medio": dist_row[1], "bajo": dist_row[2]},
         }
 
     async def get_stats(self):

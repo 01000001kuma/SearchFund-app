@@ -59,3 +59,84 @@ def test_export_excel_todas_responde_xlsx():
 def test_export_lista_inexistente_404():
     resp = client.get("/api/lists/99999/export/xlsx")
     assert resp.status_code == 404
+
+# ==================== FILTROS FINANCIEROS ====================
+
+from backend.main import SearchRequest, matches_financial_filters  # noqa: E402
+from backend.models.company import Company  # noqa: E402
+from backend.models.financial import FinancialData  # noqa: E402
+
+
+def _company(ebitda=None, revenue=None):
+    return Company(
+        name="Test SL",
+        cif="B12345678",
+        slug="test-sl-b12345678",
+        financial=FinancialData(ebitda=ebitda, revenue=revenue),
+    )
+
+
+def test_filtro_ebitda_min_excluye_sin_dato():
+    req = SearchRequest(ebitda_min=500_000)
+    assert matches_financial_filters(_company(ebitda=1_500_000), req) is True
+    assert matches_financial_filters(_company(ebitda=100_000), req) is False
+    # Sin dato EBITDA → excluida cuando se pide rango
+    assert matches_financial_filters(_company(), req) is False
+
+
+def test_filtro_ebitda_rango_objetivo():
+    req = SearchRequest(ebitda_min=1_500_000, ebitda_max=3_000_000)
+    assert matches_financial_filters(_company(ebitda=2_000_000), req) is True
+    assert matches_financial_filters(_company(ebitda=3_500_000), req) is False
+
+
+def test_filtro_revenue_min():
+    req = SearchRequest(revenue_min=10_000_000)
+    assert matches_financial_filters(_company(revenue=12_000_000), req) is True
+    assert matches_financial_filters(_company(revenue=5_000_000), req) is False
+
+
+def test_sin_filtros_financieros_pasa_todo():
+    req = SearchRequest()
+    assert matches_financial_filters(_company(), req) is True
+    assert matches_financial_filters(_company(ebitda=9_999_999), req) is True
+
+
+def test_search_valida_parametros_financieros():
+    # ebitda_min negativo → 422
+    resp = client.post("/api/search", json={"query": "", "ebitda_min": -1})
+    assert resp.status_code == 422
+    # Aceptado con rango válido (query vacía → early return, sin red)
+    resp = client.post(
+        "/api/search",
+        json={"query": "", "ebitda_min": 1_500_000, "ebitda_max": 3_000_000},
+    )
+    assert resp.status_code == 200
+
+
+# ==================== VALIDACIÓN DE LISTAS ====================
+
+
+def test_crear_lista_con_nombre_en_blanco_rechazada():
+    resp = client.post("/api/lists", json={"name": "   "})
+    assert resp.status_code == 422
+
+
+def test_anadir_a_lista_inexistente_devuelve_404():
+    # Antes devolvía 409 "ya está en la lista" (bug de FK → IntegrityError)
+    resp = client.post("/api/lists/99999/items", json={"cif": "B66778899"})
+    assert resp.status_code == 404
+
+
+def test_anadir_empresa_no_cacheada_devuelve_404():
+    lists = client.get("/api/lists").json()["lists"]
+    resp = client.post(
+        f"/api/lists/{lists[0]['id']}/items", json={"cif": "Z99999999"}
+    )
+    assert resp.status_code == 404
+
+
+def test_search_devuelve_distribucion_de_scores():
+    resp = client.post("/api/search", json={"query": "", "limit": 5})
+    body = resp.json()
+    assert set(body["score_distribution"].keys()) == {"bajo", "medio", "alto"}
