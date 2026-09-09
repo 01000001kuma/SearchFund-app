@@ -140,3 +140,38 @@ def test_search_devuelve_distribucion_de_scores():
     resp = client.post("/api/search", json={"query": "", "limit": 5})
     body = resp.json()
     assert set(body["score_distribution"].keys()) == {"bajo", "medio", "alto"}
+
+
+# ==================== OPTIMIZACIÓN DE CUOTA ====================
+
+
+def test_company_from_search_item_sin_llamada_de_detalle():
+    from backend.data_sources.openmercantil import OpenMercantilSource
+
+    src = OpenMercantilSource()
+    item = {
+        "slug": "transportes-urbanos-de-zaragoza-sa",
+        "name": "TRANSPORTES URBANOS DE ZARAGOZA SA",
+        "cif": "A50002930",
+        "province": "Zaragoza",
+        "cnae_code": "49",
+        "cnae_section": "H",
+        "acts_count": 60,
+        "first_seen": "2009-01-16",
+        "last_seen": "2026-05-07",
+    }
+    fmt = src._company_from_search_item(item)
+    assert fmt is not None
+    assert fmt["basic_info"]["name"] == "TRANSPORTES URBANOS DE ZARAGOZA SA"
+    assert fmt["basic_info"]["province"] == "Zaragoza"
+    assert fmt["basic_info"]["cnae"] == "H · 49"
+    assert fmt["borme"]["acts_count"] == 60
+    assert fmt["financial"] is None
+
+
+def test_company_from_search_item_item_invalido():
+    from backend.data_sources.openmercantil import OpenMercantilSource
+
+    src = OpenMercantilSource()
+    assert src._company_from_search_item({"slug": ""}) is None
+    assert src._company_from_search_item({"slug": "x", "name": "", "cif": ""}) is None

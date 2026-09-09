@@ -21,6 +21,13 @@
 | 10. Auditoría | ✅ Completada | 106 issues corregidos |
 
 ## Log de Cambios Recientes
+### 2026-09-09 — Optimización de cuota (v1.2 #4) ✅
+- 🔋 **Búsqueda con 1 llamada de API en vez de 21**: `openmercantil.search_companies` ahora construye las empresas directamente desde los ítems de `/search` (`_company_from_search_item`: nombre, CIF, slug, provincia, CNAE sección·código, acts_count, first/last_seen) **sin** pedir el detalle de cada slug. Verificado en vivo: `journalctl` muestra exactamente 1 llamada a openmercantil por búsqueda.
+- El detalle (administradores, dirección, web, teléfono) se obtiene **bajo demanda** al abrir la ficha (`GET /api/company/{slug}` → 1 llamada) y ahí se re-scorea y persiste.
+- Impacto: cuota 200/día ≈ 200 búsquedas (antes ≈ 9). Búsqueda diaria masiva posible.
+- Trade-off documentado: en resultados de búsqueda el score es parcial (sin datos de administradores hasta abrir la ficha); se completa progresivamente.
+- Tests +2 (38/38): builder desde ítem de búsqueda + casos inválidos.
+
 ### 2026-09-09 (tarde) — Auditoría de bugs y fallos
 Hallazgos y correcciones:
 - 🔴 **HIGH — Build Electron roto**: `package.json` incluía `electron/main.js`/`preload.js` pero los archivos reales son `main.cjs`/`preload.cjs`. La próxima build del AppImage habría salido sin proceso principal. Corregido. (Pendiente aparte: bundling del backend Python en el empaquetado — hoy requiere backend externo en :8000.)

@@ -1,7 +1,6 @@
 import httpx
 import logging
 import re
-import asyncio
 from typing import Optional, Dict, Any, List
 from .base import DataSource
 
@@ -157,8 +156,11 @@ class OpenMercantilSource(DataSource):
                     it.get("slug"): it for it in items if it.get("slug")
                 }
 
-                slugs_to_fetch = []
-                cached_results = []
+                # Optimización de cuota: la búsqueda devuelve todos los datos
+                # que necesitamos para listar (nombre, CIF, provincia, CNAE,
+                # actos). El detalle se pide bajo demanda al abrir la ficha.
+                # Coste: 1 llamada por búsqueda en vez de 1 + N detalles.
+                results_list = []
                 for result in items:
                     slug = result.get("slug")
                     if not slug:
@@ -166,40 +168,18 @@ class OpenMercantilSource(DataSource):
                     if cached_lookup:
                         cached = await cached_lookup(slug)
                         if cached:
-                            cached_results.append(
+                            results_list.append(
                                 self._enrich_with_search_item(
                                     company_to_internal_format(cached),
                                     search_items.get(slug),
                                 )
                             )
                             continue
-                    slugs_to_fetch.append(slug)
+                    built = self._company_from_search_item(result)
+                    if built:
+                        results_list.append(built)
 
-                # Fetch remaining slugs in parallel (max 5 concurrent)
-                fetched = []
-                if slugs_to_fetch:
-                    sem = asyncio.Semaphore(5)
-
-                    async def _fetch_one(s):
-                        async with sem:
-                            return await self._get_by_slug(s)
-
-                    results = await asyncio.gather(
-                        *[_fetch_one(s) for s in slugs_to_fetch],
-                        return_exceptions=True,
-                    )
-                    for slug, r in zip(slugs_to_fetch, results):
-                        if isinstance(r, RateLimitError):
-                            raise r
-                        if r and not isinstance(r, Exception):
-                            formatted = self._format_response(r)
-                            if formatted:
-                                self._enrich_with_search_item(
-                                    formatted, search_items.get(slug)
-                                )
-                                fetched.append(formatted)
-
-                return cached_results + fetched
+                return results_list
             elif response.status_code == 429:
                 raise RateLimitError()
             else:
@@ -210,6 +190,34 @@ class OpenMercantilSource(DataSource):
         except Exception as e:
             logger.error(f"Error buscando empresas: {e}")
             return []
+
+    def _company_from_search_item(self, item: Dict) -> Optional[Dict]:
+        """Formato interno directo desde un ítem de /search (sin llamada de detalle)."""
+        slug = item.get("slug")
+        if not slug:
+            return None
+        name, cif = item.get("name", ""), item.get("cif", "")
+        if not name and not cif:
+            return None
+        sec, code = item.get("cnae_section"), item.get("cnae_code")
+        cnae = f"{sec} · {code}" if sec and code else (code or sec)
+        return {
+            "basic_info": {
+                "cif": cif,
+                "name": name,
+                "slug": slug,
+                "province": item.get("province") or None,
+                "cnae": cnae,
+                "administrators": [],
+            },
+            "borme": {
+                "acts_count": item.get("acts_count", 0),
+                "last_activity": item.get("last_seen"),
+                "first_seen": item.get("first_seen"),
+                "acts": [],
+            },
+            "financial": None,
+        }
 
     def _enrich_with_search_item(
         self, formatted: Dict, item: Optional[Dict]
