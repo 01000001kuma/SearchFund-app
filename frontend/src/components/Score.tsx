@@ -57,27 +57,32 @@ export function ScoreCircle({
   size?: number
 }) {
   const pct = score == null ? 0 : Math.max(0, Math.min(100, score))
-  const r = (size - 10) / 2
+  const strokeWidth = Math.max(5, Math.round(size / 18))
+  const r = (size - strokeWidth - 6) / 2
   const c = 2 * Math.PI * r
   const offset = c - (pct / 100) * c
 
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
+    <div
+      className="relative inline-flex shrink-0 items-center justify-center"
+      style={{ width: size, height: size }}
+      role="img"
+      aria-label={`Puntuación ${score == null ? "sin datos" : Math.round(score)} de 100`}
+    >
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
-          fill="none"
-          strokeWidth="6"
-          className="stroke-muted"
+          strokeWidth={strokeWidth}
+          className="fill-background stroke-muted"
         />
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
-          strokeWidth="6"
+          strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={offset}
@@ -85,10 +90,18 @@ export function ScoreCircle({
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className={cn("text-lg font-bold leading-none", scoreColor(score))}>
+        <span
+          className={cn("font-bold leading-none tracking-tight", scoreColor(score))}
+          style={{ fontSize: Math.round(size * 0.3) }}
+        >
           {score == null ? "—" : Math.round(score)}
         </span>
-        <span className="text-[10px] text-muted-foreground">/100</span>
+        <span
+          className="text-muted-foreground"
+          style={{ fontSize: Math.max(9, Math.round(size * 0.075)), marginTop: Math.round(size * 0.02) }}
+        >
+          de 100
+        </span>
       </div>
     </div>
   )
