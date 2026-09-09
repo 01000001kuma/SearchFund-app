@@ -125,7 +125,7 @@ export function Dashboard() {
               </div>
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <span className="size-2 rounded-full bg-primary" /> Busquedas
+                  <span className="size-2 rounded-full bg-primary" /> Búsquedas
                 </span>
                 <span className="flex items-center gap-1">
                   <span className="size-2 rounded-full bg-emerald-500" /> Empresas
@@ -170,7 +170,7 @@ export function Dashboard() {
                     </span>
                     <div className="pointer-events-none absolute bottom-full mb-2 hidden rounded bg-popover p-2 text-xs shadow-lg group-hover:block z-10 border">
                       <p className="font-bold mb-1">{d.day}</p>
-                      <p className="text-muted-foreground">Busquedas: {d.searches}</p>
+                      <p className="text-muted-foreground">Búsquedas: {d.searches}</p>
                       <p className="text-muted-foreground">Empresas: {d.companies}</p>
                       <p className="text-muted-foreground">Listas: {d.lists}</p>
                     </div>
@@ -215,7 +215,7 @@ export function Dashboard() {
               <div className="rounded-lg border bg-muted/30 p-3">
                 <h3 className="text-sm font-medium">Listas</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Organiza tus candidatas en grupos personalizados y exporta las candidatas en PDFs o Tablas de EXCEL para su analisis financiero.
+                  Organiza tus candidatas en grupos personalizados y expórtalas en PDFs o tablas de EXCEL para su análisis financiero.
                 </p>
               </div>
             </div>
