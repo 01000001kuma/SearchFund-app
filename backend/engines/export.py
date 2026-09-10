@@ -480,7 +480,7 @@ def export_excel(companies: List[Company]) -> bytes:
             round(d["score"], 1) if d.get("score") is not None else None,
             label,
             d.get("borme_acts_count"),
-            d.get("last_borme_activity") or "",
+            _fmt_date(d.get("last_borme_activity")) if d.get("last_borme_activity") else "",
             ", ".join(a.name for a in company.administrators[:5]) or "",
             ", ".join(d.get("tags") or []) if d.get("tags") else "",
             d.get("notes") or "",
