@@ -228,31 +228,21 @@ export function CompanyDetail() {
 
       {/* Selector de formato de exportación */}
       <Dialog open={exportOpen} onOpenChange={setExportOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-xs">
           <DialogHeader>
-            <DialogTitle>Exportar {company?.name}</DialogTitle>
-            <DialogDescription>
-              Elige el formato para esta empresa.
+            <DialogTitle className="text-center">Exportar</DialogTitle>
+            <DialogDescription className="text-center">
+              Elige el formato
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4" onClick={handleExportPdf}>
+          <div className="grid grid-cols-2 gap-3 pb-2">
+            <Button variant="outline" className="h-20 flex-col gap-1.5" onClick={handleExportPdf}>
               <FileText className="size-6 text-blue-500" />
-              <span className="text-left">
-                <span className="block font-semibold">PDF — Informe ejecutivo</span>
-                <span className="block text-xs text-muted-foreground">
-                  Medidor de probabilidad, criterios, métricas frente al perfil objetivo y BORME
-                </span>
-              </span>
+              PDF
             </Button>
-            <Button variant="outline" className="h-auto justify-start gap-3 p-4" onClick={handleExportExcel}>
+            <Button variant="outline" className="h-20 flex-col gap-1.5" onClick={handleExportExcel}>
               <FileSpreadsheet className="size-6 text-emerald-500" />
-              <span className="text-left">
-                <span className="block font-semibold">Excel — Datos de la empresa</span>
-                <span className="block text-xs text-muted-foreground">
-                  Tabla con métricas y contactos, lista para tu propio análisis
-                </span>
-              </span>
+              Excel
             </Button>
           </div>
         </DialogContent>
