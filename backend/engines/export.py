@@ -86,81 +86,6 @@ def _fit_mark(value, lo, hi) -> str:
 
 # ============================ PDF ============================
 
-class _Bar:
-    """Flowable de barra de progreso fina."""
-
-    def __init__(self, pct: Optional[float], color: str):
-        from reportlab.platypus import Flowable
-
-        Flowable.__init__(self)
-        self._pct, self._color = pct, color
-        self.height = 5
-        self.width = 1
-
-    def wrap(self, availWidth, availHeight):
-        self.width = availWidth
-        return (availWidth, self.height)
-
-    def draw(self):
-        from reportlab.lib.colors import HexColor
-
-        c = self.canv
-        c.setFillColor(HexColor(TRACK_GRAY))
-        c.rect(0, 0, self.width, self.height, stroke=0, fill=1)
-        if self._pct:
-            c.setFillColor(HexColor(self._pct_color))
-            c.rect(0, 0, self.width * min(100, self._pct) / 100, self.height, stroke=0, fill=1)
-
-    def set_color(self, color: str):
-        self._pct_color = color
-
-
-def _bar(pct: Optional[float], color: str):
-    bar = _Bar(pct, color)
-    bar.set_color(color)
-    return bar
-
-
-class ScoreGauge:
-    """Medidor donut (arco lleno + número central) compatible con platypus."""
-
-    def __init__(self, size: float = 96, score: Optional[float] = None):
-        self.size = size
-        self.score = score
-
-    def wrap(self, availWidth, availHeight):
-        return (self.size, self.size)
-
-    def draw(self):
-        from reportlab.lib.colors import HexColor
-
-        c = self.canv
-        s = self.size
-        band_color, _ = score_band(self.score)
-        pct = max(0.0, min(100.0, self.score or 0))
-        sw = max(5, s / 14)
-        r = (s - sw - 4) / 2
-        cx = cy = s / 2
-
-        c.setStrokeColor(HexColor("#D8DEE6"))
-        c.setFillColor(HexColor("#FFFFFF"))
-        c.setLineWidth(sw)
-        c.circle(cx, cy, r, stroke=1, fill=1)
-        if pct > 0:
-            c.setStrokeColor(HexColor(band_color))
-            c.setLineWidth(sw)
-            c.setLineCap(1)
-            c.arc(cx - r, cy - r, cx + r, cy + r, startAng=90, extent=-3.6 * pct)
-
-        c.setFillColor(HexColor(band_color if self.score is not None else "#9AA3AE"))
-        fs = s * 0.3
-        c.setFont("Helvetica-Bold", fs)
-        c.drawCentredString(cx, cy - fs * 0.18, "—" if self.score is None else str(int(round(self.score))))
-        c.setFont("Helvetica", max(7, s * 0.075))
-        c.setFillColor(HexColor("#6B7280"))
-        c.drawCentredString(cx, cy - fs * 0.55, "de 100")
-
-
 def export_pdf(company: Company) -> bytes:
     """Informe ejecutivo PDF finance-grade de una empresa."""
     from reportlab.lib import colors
@@ -169,10 +94,69 @@ def export_pdf(company: Company) -> bytes:
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
     from reportlab.platypus import (
-        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Flowable,
     )
 
-    sb = company.score_breakdown or {}
+    class ScoreGauge(Flowable):
+        """Medidor donut (arco lleno + número central)."""
+
+        def __init__(self, size, score):
+            super().__init__()
+            self.size, self.score = size, score
+
+        def wrap(self, availWidth, availHeight):
+            return (self.size, self.size)
+
+        def draw(self):
+            band_color, _ = score_band(self.score)
+            pct = max(0.0, min(100.0, self.score or 0))
+            sw = max(5, self.size / 14)
+            r = (self.size - sw - 4) / 2
+            cx = cy = self.size / 2
+            self.canv.setStrokeColor(HexColor("#D8DEE6"))
+            self.canv.setFillColor(HexColor("#FFFFFF"))
+            self.canv.setLineWidth(sw)
+            self.canv.circle(cx, cy, r, stroke=1, fill=1)
+            if pct > 0:
+                self.canv.setStrokeColor(HexColor(band_color))
+                self.canv.setLineWidth(sw)
+                self.canv.setLineCap(1)
+                self.canv.arc(cx - r, cy - r, cx + r, cy + r, startAng=90, extent=-3.6 * pct)
+            self.canv.setFillColor(HexColor(band_color if self.score is not None else "#9AA3AE"))
+            fs = self.size * 0.3
+            self.canv.setFont("Helvetica-Bold", fs)
+            self.canv.drawCentredString(cx, cy - fs * 0.18, "—" if self.score is None else str(int(round(self.score))))
+            self.canv.setFont("Helvetica", max(7, self.size * 0.075))
+            self.canv.setFillColor(HexColor("#6B7280"))
+            self.canv.drawCentredString(cx, cy - fs * 0.55, "de 100")
+
+    class MiniBar(Flowable):
+        """Barra de progreso fina."""
+
+        def __init__(self, pct, color):
+            super().__init__()
+            self.pct, self.color = pct, color
+            self.height = 5
+            self.width = 1
+
+        def wrap(self, availWidth, availHeight):
+            self.width = availWidth
+            return (availWidth, self.height)
+
+        def draw(self):
+            self.canv.setFillColor(HexColor(TRACK_GRAY))
+            self.canv.rect(0, 0, self.width, self.height, stroke=0, fill=1)
+            if self.pct:
+                self.canv.setFillColor(HexColor(self.color))
+                self.canv.rect(0, 0, self.width * min(100, self.pct) / 100, self.height, stroke=0, fill=1)
+
+    # Desglose calculado al vuelo si la empresa no lo trae persistido
+    if company.score_breakdown:
+        sb = company.score_breakdown
+    else:
+        from .score import ScoreCalculator
+        sb = ScoreCalculator().calculate(company)
+
     score = company.score
     band_color, band_label = score_band(score)
     fin = company.financial
@@ -245,7 +229,7 @@ def export_pdf(company: Company) -> bytes:
         label_cell = Paragraph(f'<font size="8" color="{TEXT_GRAY}">{label}</font>', txt)
         val_cell = Paragraph(f'<font size="8" color="{TEXT_GRAY}"><b>{"sin datos" if pct is None else f"{pct:.0f}%"}</b></font>',
                              ParagraphStyle("rv", parent=txt, fontSize=8, alignment=2))
-        t = Table([[label_cell, val_cell], [_bar(pct, color), ""]],
+        t = Table([[label_cell, val_cell], [MiniBar(pct, color), ""]],
                   colWidths=[inner * 0.25 - 10, 44],
                   style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (0, 0), 0)]))
         return t

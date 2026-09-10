@@ -100,3 +100,20 @@ def test_export_excel_cabecera_coincide_con_datos():
     headers = [c.value for c in ws[4]]
     row = [c.value for c in ws[5]]
     assert len(headers) == len(row)
+
+
+def test_export_pdf_sin_reprs_de_objetos():
+    """Los flowables deben dibujarse, no imprimirse como repr() (regresión)."""
+    pdf = export_pdf(_sample_company())
+    assert b"ScoreGauge" not in pdf
+    assert b"_Bar object" not in pdf
+    assert b"backend.engines" not in pdf
+
+
+def test_export_pdf_calcula_desglose_si_no_esta_persistido():
+    from backend.models.financial import FinancialData
+    c = make_company(cif="B22222222", name="SIN DESGLOSE SL", slug="sin-desglose")
+    c.score = 45.0
+    c.score_breakdown = None  # sin desglose persistido
+    pdf = export_pdf(c)
+    assert pdf.startswith(b"%PDF")
