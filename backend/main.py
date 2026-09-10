@@ -162,11 +162,20 @@ async def health():
 @app.get("/api/company/{identifier}")
 async def get_company(identifier: str):
     cached = await database.get_company(identifier)
+    if not cached:
+        cached = await database.get_company_by_slug(identifier)
     if cached:
-        return cached
-
-    cached = await database.get_company_by_slug(identifier)
-    if cached:
+        # Autorreparación: recalcula score/desglose si falta o desajusta
+        # (empresas cacheadas antes de la v1.1 no traían breakdown)
+        score = score_calculator.calculate(cached)
+        stale = (
+            cached.score_breakdown is None
+            or cached.score != score["total"]
+        )
+        cached.score = score["total"]
+        cached.score_breakdown = score
+        if stale:
+            await database.save_company(cached)
         return cached
 
     company = await orchestrator.get_company(identifier)
