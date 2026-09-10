@@ -14,7 +14,7 @@ from .engines.score import ScoreCalculator
 from .engines.llm import get_llm_engine, LLMError
 from .engines.candidate_search import CandidateSearch
 from .engines.contact_enrichment import contact_enricher
-from .engines.export import export_pdf, export_excel
+from .engines.export import export_pdf, export_excel, _fmt_eur
 from .storage.database import Database
 from .models.financial import FinancialData
 from .models.company import Company
@@ -268,7 +268,67 @@ async def get_company_score(cif: str):
     return {"cif": cif, "score": score, "indicators": indicators}
 
 
-# ==================== EXPORTACIÓN ====================
+@app.post("/api/company/{cif}/dictamen")
+async def generate_dictamen(cif: str):
+    """Dictamen narrativo del Agente (LLM) sobre la empresa, persistido en el caché."""
+    if not _CIF_RE.match(cif):
+        raise HTTPException(status_code=400, detail="CIF inválido")
+
+    company = await database.get_company(cif)
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    # Perfil de la empresa para el LLM
+    admins = "; ".join(
+        f"{a.name} ({a.role or 'administrador'}, desde {a.since or '?'})"
+        for a in company.administrators[:6]
+    ) or "no consta"
+    acts = company.borme.acts[:8]
+    acts_text = "; ".join(
+        f"{(a.get('date') or '')[:10]}: {a.get('type') or a.get('title', '')}"
+        for a in acts
+    ) or "sin actos recientes"
+    fin = company.financial
+    fin_txt = (
+        f"EBITDA {_fmt_eur(fin.ebitda)}, facturación {_fmt_eur(fin.revenue)}"
+        if fin.ebitda is not None and fin.revenue is not None
+        else "sin datos financieros (pendientes de fuentes)"
+    )
+    prompt = (
+        "Eres un analista senior de un search fund español. Redacta un dictamen en 2 párrafos "
+        "(máximo 120 palabras en total) sobre esta empresa para un inversor.\n"
+        "Párrafo 1: síntesis de las señales del Registro Mercantil (antigüedad, administradores, actos).\n"
+        "Párrafo 2: encaje con el perfil objetivo (facturación 10-15M€, EBITDA 1,5-3M€; si faltan datos, "
+        "dilo) y recomendación de siguiente paso.\n\n"
+        "Español sobrio y profesional. NO inventes datos que no se den.\n\n"
+        f"EMPRESA\n"
+        f"Nombre: {company.name}\n"
+        f"CIF: {company.cif} | Forma: {company.legal_form or '?'} | Provincia: {company.province or '?'}\n"
+        f"Antigüedad: {company.get_age_years() or '?'} años\n"
+        f"Administradores: {admins}\n"
+        f"Actos BORME: {company.borme.acts_count} (última actividad {company.borme.last_activity or '?'}). Últimos: {acts_text}\n"
+        f"Financiero: {fin_txt}\n"
+    )
+
+    try:
+        opinion = await asyncio.wait_for(
+            get_llm_engine().fast_complete(prompt, temperature=0.4, max_tokens=320),
+            timeout=180.0,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="El Agente tardó demasiado (180s); reintenta")
+    except LLMError as e:
+        raise HTTPException(status_code=503, detail=f"Agente no disponible: {e}")
+
+    company.agent_opinion = opinion.strip()
+    score = score_calculator.calculate(company)
+    company.score = score["total"]
+    company.score_breakdown = score
+    await database.save_company(company)
+    return {"status": "generated", "opinion": opinion}
+
+
+@app.get("/api/company/{cif}/score")
 
 @app.get("/api/company/{cif}/export/pdf")
 async def export_company_pdf(cif: str):

@@ -50,6 +50,7 @@ export function CompanyDetail() {
   const [savingFinance, setSavingFinance] = useState(false)
   const [financeMsg, setFinanceMsg] = useState<string | null>(null)
   const [financeIsError, setFinanceIsError] = useState(false)
+  const [generatingOpinion, setGeneratingOpinion] = useState(false)
 
   useEffect(() => {
     if (!slug) return
@@ -112,6 +113,19 @@ export function CompanyDetail() {
       setFinanceIsError(true)
     } finally {
       setSavingFinance(false)
+    }
+  }
+
+  async function generateOpinion() {
+    if (!company) return
+    setGeneratingOpinion(true)
+    try {
+      const res = await api.generateDictamen(company.cif)
+      setCompany({ ...company, agent_opinion: res.opinion })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al generar el dictamen")
+    } finally {
+      setGeneratingOpinion(false)
     }
   }
 
@@ -356,6 +370,42 @@ export function CompanyDetail() {
           </Card>
         </div>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Sparkles className="size-4 text-primary" /> Dictamen del Agente
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {generatingOpinion ? (
+            <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+              <Loader2 className="size-6 animate-spin" />
+              <p className="text-sm">El Agente está redactando su dictamen…</p>
+              <p className="text-xs">Puede tardar alrededor de un minuto en CPU.</p>
+            </div>
+          ) : company.agent_opinion ? (
+            <div className="space-y-3">
+              <p className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm leading-relaxed whitespace-pre-line">
+                {company.agent_opinion}
+              </p>
+              <Button variant="outline" size="sm" onClick={generateOpinion}>
+                <Sparkles className="mr-2 size-3.5" /> Regenerar dictamen
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Pide al Agente un análisis narrativo de esta empresa: señales del
+                Registro Mercantil, encaje con el perfil objetivo y siguiente paso.
+              </p>
+              <Button size="sm" onClick={generateOpinion}>
+                <Sparkles className="mr-2 size-4" /> Generar dictamen (~1 min)
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-3">

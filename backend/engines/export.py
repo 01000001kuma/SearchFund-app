@@ -336,6 +336,24 @@ def export_pdf(company: Company) -> bytes:
         ))
         story.append(Spacer(1, 5 * mm))
 
+    # ---- Dictamen del Agente (si está generado) ----
+    if company.agent_opinion:
+        story.append(Paragraph("Dictamen del Agente", small))
+        story.append(Table(
+            [[Paragraph(company.agent_opinion.replace("\n", "<br/>"),
+                        ParagraphStyle("op", parent=txt, fontSize=9, leading=13, textColor=colors.HexColor(TEXT_DARK)))]],
+            colWidths=[inner],
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), HexColor("#EAF0F7")),
+                ("BOX", (0, 0), (-1, -1), 0.6, HexColor(NAVY)),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ]),
+        ))
+        story.append(Spacer(1, 5 * mm))
+
     # ---- Histórico BORME ----
     acts = company.borme.acts or []
     story.append(Paragraph("Registro histórico (BORME)", small))

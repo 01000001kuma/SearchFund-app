@@ -51,6 +51,7 @@ class Company(BaseModel):
 
     tags: List[str] = []
     notes: Optional[str] = None
+    agent_opinion: Optional[str] = None  # dictamen del Agente (LLM)
 
     def has_financial_data(self) -> bool:
         return self.financial.is_complete()
