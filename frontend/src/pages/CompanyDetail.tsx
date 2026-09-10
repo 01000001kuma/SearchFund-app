@@ -12,6 +12,8 @@ import {
   TrendingUp,
   ShieldCheck,
   Zap,
+  FileSpreadsheet,
+
   Sparkles,
 } from "lucide-react"
 import { api, getExportUrl } from "@/lib/api"
@@ -23,6 +25,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScoreCircle } from "@/components/Score"
 import { AddToListDialog } from "@/components/AddToListDialog"
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog"
 import { formatEuro } from "@/lib/utils"
 
 function parseNum(value: string): number | null {
@@ -52,6 +57,7 @@ export function CompanyDetail() {
   const [financeMsg, setFinanceMsg] = useState<string | null>(null)
   const [financeIsError, setFinanceIsError] = useState(false)
   const [generatingOpinion, setGeneratingOpinion] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   useEffect(() => {
     if (!slug) return
@@ -130,6 +136,23 @@ export function CompanyDetail() {
     }
   }
 
+  async function handleExportExcel() {
+    if (!company) return
+    try {
+      const url = await getExportUrl(`/api/company/${company.cif}/export/xlsx`)
+      const res = await fetch(url)
+      const blob = await res.blob()
+      const a = document.createElement("a")
+      a.href = URL.createObjectURL(blob)
+      a.download = `empresa_${company.cif}.xlsx`
+      a.click()
+      URL.revokeObjectURL(a.href)
+    } catch {
+      const url = await getExportUrl(`/api/company/${company.cif}/export/xlsx`)
+      window.open(url, "_blank")
+    }
+  }
+
   async function handleExportPdf() {
     if (!company) return
     try {
@@ -195,13 +218,45 @@ export function CompanyDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportPdf}>
+          <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
             <Download className="size-4 mr-2" />
-            Exportar Informe
+            Exportar
           </Button>
           <AddToListDialog company={company} />
         </div>
       </div>
+
+      {/* Selector de formato de exportación */}
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Exportar {company?.name}</DialogTitle>
+            <DialogDescription>
+              Elige el formato para esta empresa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4" onClick={handleExportPdf}>
+              <FileText className="size-6 text-blue-500" />
+              <span className="text-left">
+                <span className="block font-semibold">PDF — Informe ejecutivo</span>
+                <span className="block text-xs text-muted-foreground">
+                  Medidor de probabilidad, criterios, métricas frente al perfil objetivo y BORME
+                </span>
+              </span>
+            </Button>
+            <Button variant="outline" className="h-auto justify-start gap-3 p-4" onClick={handleExportExcel}>
+              <FileSpreadsheet className="size-6 text-emerald-500" />
+              <span className="text-left">
+                <span className="block font-semibold">Excel — Datos de la empresa</span>
+                <span className="block text-xs text-muted-foreground">
+                  Tabla con métricas y contactos, lista para tu propio análisis
+                </span>
+              </span>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Medidor de probabilidad (tira compacta de cabecera) */}
       <Card className="border-primary/20">

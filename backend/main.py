@@ -363,6 +363,30 @@ async def export_company_pdf(cif: str):
     )
 
 
+@app.get("/api/company/{cif}/export/xlsx")
+async def export_company_xlsx(cif: str):
+    if not _CIF_RE.match(cif):
+        raise HTTPException(status_code=400, detail="CIF inválido")
+
+    company = await database.get_company(cif)
+    if not company:
+        company = await orchestrator.get_company(cif)
+        if not company:
+            raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    xlsx = await asyncio.to_thread(export_excel, [company])
+    safe_cif = _sanitize_filename(company.cif)
+    filename = f"empresa_{safe_cif}.xlsx"
+    return Response(
+        content=xlsx,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(xlsx)),
+        },
+    )
+
+
 @app.get("/api/lists/{list_id}/export/xlsx")
 async def export_list_excel(list_id: int):
     list_info = await database.get_list(list_id)
