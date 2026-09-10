@@ -1,221 +1,545 @@
 """
-Exportación de datos a PDF y Excel.
+Exportación finance-grade a PDF y Excel.
 
-- PDF: informe legible de una empresa (reportlab).
-- Excel: hoja de cálculo con varias empresas (openpyxl).
-
-Se usa Company.to_export_dict() como fuente de datos canónica.
+- PDF: informe ejecutivo de una empresa (platypus/reportlab): banda de
+  cabecera, medidor donut del score, desglose de criterios, métricas
+  financieras frente al perfil objetivo, corporativos, administradores
+  y últimos actos BORME.
+- Excel: hoja "Candidatas" estilizada (cabecera navy, color por banda de
+  score, cifras numéricas, autofiltro) + hoja "Leyenda" con la
+  metodología de scoring.
 """
 import io
 import logging
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 
 from ..models.company import Company
 
 logger = logging.getLogger(__name__)
 
-PDF_COLUMNS = [
-    ("CIF", "cif"),
-    ("Nombre", "name"),
-    ("Provincia", "province"),
-    ("Ciudad", "city"),
-    ("Dirección", "address"),
-    ("Web", "website"),
-    ("Teléfono", "phone"),
-    ("Email", "email"),
-    ("Forma legal", "legal_form"),
-    ("Antigüedad", "age_years"),
-    ("EBITDA", "ebitda_formatted"),
-    ("Facturación", "revenue_formatted"),
-    ("Empleados", "employees"),
-    ("Score", "score"),
-    ("Interpretación", "score_interpretation"),
-    ("Actos BORME", "borme_acts_count"),
-    ("Último acto BORME", "last_borme_activity"),
-    ("Notas", "notes"),
+# ---- Identidad visual (finance-grade) ----
+NAVY = "#1F4E79"
+TEXT_DARK = "#1A1A1A"
+TEXT_GRAY = "#5A5A5A"
+ROW_ALT = "#F5F8FB"
+BORDER_GRAY = "#C9D3E0"
+TRACK_GRAY = "#E5E9EF"
+
+# Bandas de score (alineadas con engines.score)
+BANDS = [
+    (80, "MUY BUENO", "#047857"),
+    (60, "BUENO", "#15803D"),
+    (40, "MODERADO", "#B45309"),
+    (20, "BAJO", "#C2410C"),
+    (0, "NO RECOMENDADO", "#B91C1C"),
 ]
 
-EXCEL_HEADERS = [
-    "CIF", "Nombre", "Provincia", "Ciudad", "Dirección", "CP",
-    "Web", "Teléfono", "Email", "Forma legal", "Antigüedad (años)",
-    "EBITDA", "Facturación", "Empleados", "Score",
-    "Interpretación", "Actos BORME", "Admin. principales",
-    "Antigüedad admin. (años)", "Tags", "Notas",
-]
+BORME_CRITERIA_MAX = {
+    "admin_age": ("Edad del administrador", 40),
+    "stability": ("Estabilidad BORME", 15),
+    "family": ("Empresa familiar", 20),
+    "no_council": ("Sin consejo externo", 10),
+    "cnae": ("Sector compatible", 10),
+    "recent_activity": ("Actividad reciente", 25),
+}
+
+# Perfil objetivo de inversión (criterios Cabiedes)
+TARGET = {
+    "revenue_min": 10_000_000, "revenue_max": 15_000_000,
+    "ebitda_min": 1_500_000, "ebitda_max": 3_000_000,
+}
 
 
-def _value(d: dict, key: str):
-    v = d.get(key)
+def score_band(score: Optional[float]):
+    """(color_hex, etiqueta) de la banda del score; (None, 'Sin evaluar') si no hay."""
+    if score is None:
+        return None, "Sin evaluar"
+    for threshold, label, color in BANDS:
+        if score >= threshold:
+            return color, label
+    return BANDS[-1][2], BANDS[-1][1]
+
+
+def _fmt_eur(v) -> str:
     if v is None:
-        return ""
-    if isinstance(v, list):
-        return ", ".join(str(x) for x in v)
-    return v
+        return "—"
+    if v >= 1_000_000:
+        return f"{v / 1_000_000:,.2f} M€".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{v:,.0f} €".replace(",", ".")
+
+
+def _fmt_date(iso) -> str:
+    if not iso:
+        return "—"
+    parts = str(iso)[:10].split("-")
+    return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else str(iso)
+
+
+def _fit_mark(value, lo, hi) -> str:
+    if value is None:
+        return "—"
+    if lo <= value <= hi:
+        return "✓ objetivo"
+    return "—"
+
+
+# ============================ PDF ============================
+
+class _Bar:
+    """Flowable de barra de progreso fina."""
+
+    def __init__(self, pct: Optional[float], color: str):
+        from reportlab.platypus import Flowable
+
+        Flowable.__init__(self)
+        self._pct, self._color = pct, color
+        self.height = 5
+        self.width = 1
+
+    def wrap(self, availWidth, availHeight):
+        self.width = availWidth
+        return (availWidth, self.height)
+
+    def draw(self):
+        from reportlab.lib.colors import HexColor
+
+        c = self.canv
+        c.setFillColor(HexColor(TRACK_GRAY))
+        c.rect(0, 0, self.width, self.height, stroke=0, fill=1)
+        if self._pct:
+            c.setFillColor(HexColor(self._pct_color))
+            c.rect(0, 0, self.width * min(100, self._pct) / 100, self.height, stroke=0, fill=1)
+
+    def set_color(self, color: str):
+        self._pct_color = color
+
+
+def _bar(pct: Optional[float], color: str):
+    bar = _Bar(pct, color)
+    bar.set_color(color)
+    return bar
+
+
+class ScoreGauge:
+    """Medidor donut (arco lleno + número central) compatible con platypus."""
+
+    def __init__(self, size: float = 96, score: Optional[float] = None):
+        self.size = size
+        self.score = score
+
+    def wrap(self, availWidth, availHeight):
+        return (self.size, self.size)
+
+    def draw(self):
+        from reportlab.lib.colors import HexColor
+
+        c = self.canv
+        s = self.size
+        band_color, _ = score_band(self.score)
+        pct = max(0.0, min(100.0, self.score or 0))
+        sw = max(5, s / 14)
+        r = (s - sw - 4) / 2
+        cx = cy = s / 2
+
+        c.setStrokeColor(HexColor("#D8DEE6"))
+        c.setFillColor(HexColor("#FFFFFF"))
+        c.setLineWidth(sw)
+        c.circle(cx, cy, r, stroke=1, fill=1)
+        if pct > 0:
+            c.setStrokeColor(HexColor(band_color))
+            c.setLineWidth(sw)
+            c.setLineCap(1)
+            c.arc(cx - r, cy - r, cx + r, cy + r, startAng=90, extent=-3.6 * pct)
+
+        c.setFillColor(HexColor(band_color if self.score is not None else "#9AA3AE"))
+        fs = s * 0.3
+        c.setFont("Helvetica-Bold", fs)
+        c.drawCentredString(cx, cy - fs * 0.18, "—" if self.score is None else str(int(round(self.score))))
+        c.setFont("Helvetica", max(7, s * 0.075))
+        c.setFillColor(HexColor("#6B7280"))
+        c.drawCentredString(cx, cy - fs * 0.55, "de 100")
 
 
 def export_pdf(company: Company) -> bytes:
-    """Generar informe PDF de una empresa. Devuelve los bytes del PDF."""
+    """Informe ejecutivo PDF finance-grade de una empresa."""
+    from reportlab.lib import colors
+    from reportlab.lib.colors import HexColor
     from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.pdfgen import canvas
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    )
 
-    d = company.to_export_dict()
+    sb = company.score_breakdown or {}
+    score = company.score
+    band_color, band_label = score_band(score)
+    fin = company.financial
+    br = (sb.get("breakdown") or {}).get("borme") or {}
+
+    txt = ParagraphStyle("cell", fontName="Helvetica", fontSize=9, leading=11.5)
+    sub_style = ParagraphStyle("sub", fontName="Helvetica", fontSize=9.5, leading=12, textColor=HexColor(TEXT_GRAY))
+    small = ParagraphStyle("section", fontName="Helvetica-Bold", fontSize=10.5, leading=13, textColor=HexColor(NAVY), spaceBefore=8, spaceAfter=3)
+    muted = ParagraphStyle("muted", fontName="Helvetica", fontSize=7.5, leading=9.5, textColor=HexColor("#6B7280"))
+    head_small = ParagraphStyle("hs", fontName="Helvetica", fontSize=7.5, leading=10, textColor=HexColor("#D6E2F0"))
+    company_style = ParagraphStyle("company", fontName="Helvetica-Bold", fontSize=17, leading=20, textColor=HexColor(TEXT_DARK))
+
+    def head_white(txt, size=13):
+        return Paragraph(f"<b>{txt}</b>", ParagraphStyle("hw", fontName="Helvetica-Bold", fontSize=size, leading=size + 3, textColor=colors.white))
+
+    def right(txt, size=8):
+        return Paragraph(f'<font color="{TEXT_GRAY}"><b>{txt}</b></font>', ParagraphStyle("r", parent=txt, alignment=2, fontSize=8))
+
     buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=16 * mm, rightMargin=16 * mm, topMargin=10 * mm, bottomMargin=14 * mm,
+        title=f"Informe Ejecutivo — {company.name}",
+    )
+    width, _ = A4
+    inner = width - 32 * mm
+    story = []
 
-    c = canvas.Canvas(buf, pagesize=A4)
-    width, height = A4
-    margin = 20 * mm
+    # ---- Banda de cabecera ----
+    header_tbl = Table(
+        [[Paragraph("<b>Informe Ejecutivo de Candidata</b>", ParagraphStyle("hw2", fontName="Helvetica-Bold", fontSize=14, leading=17, textColor=colors.white)),
+          Paragraph(f"<b>Search Fund Tool</b><br/>Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')} · CONFIDENCIAL",
+                    ParagraphStyle("hr", parent=head_small, alignment=2))]],
+        colWidths=[inner * 0.6, inner * 0.4],
+        style=TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), HexColor(NAVY)),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ]),
+    )
+    story.append(header_tbl)
+    story.append(Spacer(1, 6 * mm))
+    story.append(Paragraph(company.name or "Sin nombre", company_style))
+    meta = [x for x in [company.cif, company.legal_form, company.province] if x]
+    story.append(Paragraph(" · ".join(meta) or "—", sub_style))
+    story.append(Spacer(1, 5 * mm))
 
-    y = height - margin
-    c.setTitle(f"Informe - {d.get('name', '')}")
+    # ---- Medidor + interpretación ----
+    interp = Paragraph(
+        f'<font color="{band_color}"><b>{band_label}</b></font><br/>'
+        f'<font size="9" color="{TEXT_GRAY}">Probabilidad de adquisición según las señales '
+        f"del Registro Mercantil y los datos financieros.</font>",
+        ParagraphStyle("interp", parent=txt, fontSize=10.5, leading=14),
+    )
+    story.append(Table(
+        [[ScoreGauge(size=3.4 * 28.35, score=score), interp]],
+        colWidths=[inner * 0.28, inner * 0.72],
+        style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]),
+    ))
+    story.append(Spacer(1, 3 * mm))
 
-    # Cabecera
-    c.setFont("Helvetica-Bold", 20)
-    c.drawString(margin, y, d.get("name", "") or "Sin nombre")
-    y -= 8 * mm
-    c.setFont("Helvetica", 11)
-    c.setStrokeColorRGB(0.2, 0.4, 0.8)
-    c.setFillColorRGB(0.2, 0.4, 0.8)
-    c.drawString(margin, y, "Search Fund Tool - Informe de candidata")
-    c.setFillColorRGB(0, 0, 0)
-    c.setStrokeColorRGB(0, 0, 0)
-    y -= 6 * mm
-    c.setFont("Helvetica", 9)
-    c.setFillColorRGB(0.35, 0.35, 0.35)
-    c.drawString(margin, y,
-                 f"Generado: {company.last_updated.strftime('%d/%m/%Y %H:%M') if company.last_updated else 'n/d'}")
-    c.setFillColorRGB(0, 0, 0)
-    y -= 12 * mm
+    # ---- Desglose del medidor + criterios ----
+    borme_pct = sb.get("borme")
+    fin_pct = sb.get("financial")
 
-    # Score destacado
-    score = d.get("score")
-    if score is not None:
-        c.setFont("Helvetica-Bold", 14)
-        interp = d.get("score_interpretation", "")
-        c.drawString(margin, y, f"Score: {int(score)}/100 — {interp}")
-        y -= 12 * mm
+    def bar_cell(label, pct, color):
+        label_cell = Paragraph(f'<font size="8" color="{TEXT_GRAY}">{label}</font>', txt)
+        val_cell = Paragraph(f'<font size="8" color="{TEXT_GRAY}"><b>{"sin datos" if pct is None else f"{pct:.0f}%"}</b></font>',
+                             ParagraphStyle("rv", parent=txt, fontSize=8, alignment=2))
+        t = Table([[label_cell, val_cell], [_bar(pct, color), ""]],
+                  colWidths=[inner * 0.25 - 10, 44],
+                  style=TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (0, 0), 0)]))
+        return t
 
-    # Bloques de datos
-    def block(title, pairs):
-        nonlocal y
-        if y < 30 * mm:
-            c.showPage()
-            y = height - margin
-        c.setFont("Helvetica-Bold", 12)
-        c.setFillColorRGB(0.15, 0.15, 0.4)
-        c.drawString(margin, y, title)
-        c.setFillColorRGB(0, 0, 0)
-        y -= 7 * mm
-        c.setFont("Helvetica", 10)
-        for label, value in pairs:
-            if value is None or value == "":
-                continue
-            if y < 25 * mm:
-                c.showPage()
-                y = height - margin
-                c.setFont("Helvetica", 10)
-            c.drawString(margin + 4 * mm, y, f"{label}:")
-            c.setFont("Helvetica-Bold", 10)
-            c.drawString(margin + 45 * mm, y, str(value)[:60])
-            c.setFont("Helvetica", 10)
-            y -= 5.5 * mm
-        y -= 5 * mm
+    summary_tbl = Table(
+        [[bar_cell("Señales BORME", borme_pct, NAVY), bar_cell("Solidez financiera", fin_pct, "#047857")]],
+        colWidths=[inner * 0.5, inner * 0.5],
+        style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 8)]),
+    )
+    story.append(summary_tbl)
+    story.append(Spacer(1, 2 * mm))
 
-    block("Datos básicos", [
-        ("CIF", d.get("cif")),
-        ("Provincia", d.get("province")),
-        ("Ciudad", d.get("city")),
-        ("Dirección", d.get("address")),
-        ("Forma legal", d.get("legal_form")),
-        ("Antigüedad", f"{d.get('age_years')} años" if d.get("age_years") else None),
-    ])
+    criteria_rows = [["Criterio", "Puntos", "Máximo"]]
+    for key, (label, mx) in BORME_CRITERIA_MAX.items():
+        val = br.get(key)
+        criteria_rows.append([label, "—" if val is None else str(int(val)), str(mx)])
+    story.append(Paragraph("Desglose del score", small))
+    story.append(Table(
+        criteria_rows,
+        colWidths=[inner * 0.5, inner * 0.25, inner * 0.25],
+        style=TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#EAF0F7")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+            ("GRID", (0, 0), (-1, -1), 0.4, HexColor(BORDER_GRAY)),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, HexColor("#F7F9FC")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]),
+    ))
+    story.append(Spacer(1, 5 * mm))
 
-    block("Contacto", [
-        ("Web", d.get("website")),
-        ("Teléfono", d.get("phone")),
-        ("Email", d.get("email")),
-    ])
+    # ---- Métricas financieras vs perfil objetivo ----
+    def fit(v, lo, hi):
+        return "✓ objetivo" if (v is not None and lo <= v <= hi) else "—"
 
-    block("Financiero", [
-        ("EBITDA", d.get("ebitda_formatted")),
-        ("Facturación", d.get("revenue_formatted")),
-        ("Empleados", d.get("employees")),
-    ])
+    fin_rows = [
+        ["Métrica", "Valor", "Perfil objetivo", "Encaje"],
+        ["EBITDA", _fmt_eur(fin.ebitda), "1,5–3,0 M€", fit(fin.ebitda, TARGET["ebitda_min"], TARGET["ebitda_max"])],
+        ["Facturación", _fmt_eur(fin.revenue), "10–15 M€", fit(fin.revenue, TARGET["revenue_min"], TARGET["revenue_max"])],
+        ["Margen EBITDA", f"{fin.ebitda_margin:.0f}%" if fin.ebitda_margin else "—", "> 15%", "✓" if (fin.ebitda_margin or 0) > 15 else "—"],
+        ["Empleados", str(fin.employees) if fin.employees else "—", "20–200", "✓" if (fin.employees or 0) and 20 <= fin.employees <= 200 else "—"],
+        ["Fuente", fin.source or "—", "", ""],
+        ["Año fiscal", str(fin.year) if fin.year else "—", "", ""],
+    ]
+    story.append(Paragraph("Métricas financieras", small))
+    story.append(Table(
+        fin_rows,
+        colWidths=[inner * 0.22, inner * 0.26, inner * 0.27, inner * 0.21],
+        style=TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor(NAVY)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("GRID", (0, 0), (-1, -1), 0.4, HexColor(BORDER_GRAY)),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, HexColor("#F7F9FC")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]),
+    ))
+    story.append(Spacer(1, 5 * mm))
 
-    block("Registro (BORME)", [
-        ("Actos", d.get("borme_acts_count")),
-        ("Último acto", d.get("last_borme_activity")),
-    ])
+    # ---- Corporativos y contacto ----
+    corp_rows = [
+        ["Provincia", company.province or "—", "Web", company.website or "—"],
+        ["Ciudad", company.city or "—", "Teléfono", company.phone or "—"],
+        ["Dirección", company.address or "—", "Email", company.email or "—"],
+        ["Fundación", _fmt_date(company.founded_date), "Forma legal", company.legal_form or "—"],
+    ]
+    story.append(Paragraph("Datos corporativos y contacto", small))
+    story.append(Table(
+        corp_rows,
+        colWidths=[inner * 0.16, inner * 0.34, inner * 0.16, inner * 0.34],
+        style=TableStyle([
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("GRID", (0, 0), (-1, -1), 0.4, HexColor(BORDER_GRAY)),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, HexColor("#F7F9FC")]),
+            ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+        ]),
+    ))
+    story.append(Spacer(1, 5 * mm))
 
-    admins = d.get("administrators")
-    if admins:
-        block("Administradores", [(f"A-{i+1}", n) for i, n in enumerate(admins[:8])])
+    # ---- Administradores ----
+    if company.administrators:
+        adm_rows = [["Administrador", "Cargo", "Desde"]]
+        for a in company.administrators[:8]:
+            adm_rows.append([a.name, a.role or "—", _fmt_date(a.since)])
+        story.append(Paragraph("Administradores", small))
+        story.append(Table(
+            adm_rows,
+            colWidths=[inner * 0.5, inner * 0.28, inner * 0.22],
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), HexColor(NAVY)),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                ("GRID", (0, 0), (-1, -1), 0.4, HexColor(BORDER_GRAY)),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, HexColor("#F5F8FB")]),
+            ]),
+        ))
+        story.append(Spacer(1, 5 * mm))
 
-    if d.get("notes"):
-        block("Notas", [("Notas", d.get("notes"))])
+    # ---- Histórico BORME ----
+    acts = company.borme.acts or []
+    story.append(Paragraph("Registro histórico (BORME)", small))
+    if acts:
+        act_rows = [["Fecha", "Acto", "Detalle"]]
+        for act in acts[:12]:
+            act_rows.append([
+                _fmt_date(act.get("date")),
+                act.get("type") or "—",
+                (act.get("details") or act.get("title") or "—")[:120],
+            ])
+        story.append(Table(
+            act_rows,
+            colWidths=[inner * 0.14, inner * 0.22, inner * 0.64],
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), HexColor(NAVY)),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.4, HexColor(BORDER_GRAY)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, HexColor("#F5F8FB")]),
+                ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+            ]),
+        ))
+    else:
+        story.append(Paragraph("Sin actos registrados en el caché.", sub_style))
 
-    c.showPage()
-    c.save()
+    story.append(Spacer(1, 6 * mm))
+    story.append(Paragraph(
+        f"Fuente de datos: {', '.join(company.data_sources) or '—'} · "
+        "Informe generado automáticamente por Search Fund Tool. Uso interno; no constituye asesoramiento de inversión.",
+        muted,
+    ))
+
+    def _footer(canvas, doc_):
+        canvas.saveState()
+        canvas.setStrokeColor(HexColor(BORDER_GRAY))
+        canvas.setLineWidth(0.5)
+        canvas.line(16 * mm, 12 * mm, width - 16 * mm, 12 * mm)
+        canvas.setFont("Helvetica", 7.5)
+        canvas.setFillColor(HexColor(TEXT_GRAY))
+        canvas.drawString(16 * mm, 8 * mm, "Search Fund Tool — Informe ejecutivo de candidata · CONFIDENCIAL")
+        canvas.drawRightString(width - 16 * mm, 8 * mm, f"Página {doc_.page}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     return buf.getvalue()
 
 
+# ============================ EXCEL ============================
+
+EXCEL_HEADERS = [
+    "CIF", "Nombre", "Forma legal", "Provincia", "Ciudad", "Dirección",
+    "Web", "Teléfono", "Email", "Antigüedad (años)",
+    "EBITDA (€)", "Facturación (€)", "Margen (%)", "Empleados", "Fuente fin.",
+    "Score", "Clasificación", "Actos BORME", "Últ. actividad",
+    "Administradores", "Tags", "Notas",
+]
+
+
+def _argb(hex6: str) -> str:
+    """openpyxl exige aRGB de 8 dígitos en Font.color."""
+    return "FF" + hex6.lstrip("#")
+
+
 def export_excel(companies: List[Company]) -> bytes:
-    """Generar hoja Excel con las empresas. Devuelve los bytes del .xlsx."""
+    """Excel finance-grade: hoja 'Candidatas' estilizada + hoja 'Leyenda'."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Candidatas"
 
-    # Cabecera
-    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True)
-    for col, header in enumerate(EXCEL_HEADERS, start=1):
-        cell = ws.cell(row=1, column=col, value=header)
-        cell.fill = header_fill
-        cell.font = header_font
+    head_fill = PatternFill("solid", start_color=NAVY.lstrip("#"), end_color=NAVY.lstrip("#"))
+    head_font = Font(color=_argb("FFFFFF"), bold=True, size=10)
+    title_font = Font(color=_argb(NAVY), bold=True, size=14)
+    sub_font = Font(color=_argb("6B7280"), size=9)
+    thin = Side(style="thin", color="C9D3E0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    alt_fill = PatternFill("solid", start_color="F5F8FB", end_color="F5F8FB")
 
-    # Datos
-    for r, company in enumerate(companies, start=2):
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=12)
+    ws.cell(row=1, column=1, value="Search Fund Tool — Ranking de candidatas").font = title_font
+    ws.cell(row=2, column=1, value=f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')} · {len(companies)} empresas · CONFIDENCIAL").font = sub_font
+
+    HEADER_ROW = 4
+    for col, header in enumerate(EXCEL_HEADERS, start=1):
+        cell = ws.cell(row=HEADER_ROW, column=col, value=header)
+        cell.fill = head_fill
+        cell.font = head_font
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    label_bg = {"MUY BUENO": "D1FAE5", "BUENO": "DCFCE7", "MODERADO": "FEF3C7",
+                "BAJO": "FFEDD5", "NO RECOMENDADO": "FEE2E2", "Sin evaluar": "F3F4F6"}
+    label_fg = {"MUY BUENO": "065F46", "BUENO": "166534", "MODERADO": "92400E",
+                "BAJO": "9A3412", "NO RECOMENDADO": "991B1B", "Sin evaluar": "6B7280"}
+
+    DATA_START = HEADER_ROW + 1
+    for r, company in enumerate(companies, start=DATA_START):
         d = company.to_export_dict()
+        fin = company.financial
+        color, label = score_band(company.score)
         row = [
-            _value(d, "cif"),
-            _value(d, "name"),
-            _value(d, "province"),
-            _value(d, "city"),
-            _value(d, "address"),
-            _value(d, "postal_code"),
-            _value(d, "website"),
-            _value(d, "phone"),
-            _value(d, "email"),
-            _value(d, "legal_form"),
-            _value(d, "age_years"),
-            _value(d, "ebitda_formatted"),
-            _value(d, "revenue_formatted"),
-            _value(d, "employees"),
-            _value(d, "score"),
-            _value(d, "score_interpretation"),
-            _value(d, "borme_acts_count"),
-            _value(d, "administrators"),
-            _value(d, "administrator_tenure"),
-            ", ".join(_value(d, "tags")) if isinstance(_value(d, "tags"), list) else _value(d, "tags"),
-            _value(d, "notes"),
+            d.get("cif") or "",
+            d.get("name") or "",
+            d.get("legal_form") or "",
+            d.get("province") or "",
+            d.get("city") or "",
+            d.get("address") or "",
+            d.get("website") or "",
+            d.get("phone") or "",
+            d.get("email") or "",
+            d.get("age_years"),
+            fin.ebitda,
+            fin.revenue,
+            fin.ebitda_margin,
+            fin.employees,
+            fin.source or "",
+            round(d["score"], 1) if d.get("score") is not None else None,
+            label,
+            d.get("borme_acts_count"),
+            d.get("last_borme_activity") or "",
+            ", ".join(a.name for a in company.administrators[:5]) or "",
+            ", ".join(d.get("tags") or []) if d.get("tags") else "",
+            d.get("notes") or "",
         ]
         for col, value in enumerate(row, start=1):
-            ws.cell(row=r, column=col, value=value)
+            cell = ws.cell(row=r, column=col, value=value)
+            cell.border = border
+            if (r - DATA_START) % 2 == 1:
+                cell.fill = alt_fill
+            header = EXCEL_HEADERS[col - 1]
+            if header in ("EBITDA (€)", "Facturación (€)"):
+                cell.number_format = "#,##0 €"
+            elif header == "Margen (%)":
+                cell.number_format = '0"%"'
+            elif header in ("Score", "Clasificación") and company.score is not None:
+                cell.fill = PatternFill("solid", start_color=label_bg.get(label, "F3F4F6"), end_color=label_bg.get(label, "F3F4F6"))
+                cell.font = Font(bold=True, color=_argb(label_fg.get(label, "1A1A1A")))
+                if header == "Score":
+                    cell.number_format = "0"
 
-    # Ajustar ancho de columnas
-    for col in ws.columns:
-        max_len = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            if cell.value is not None:
-                max_len = max(max_len, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = min(max_len + 2, 40)
+    widths = [12, 34, 9, 11, 12, 26, 22, 13, 22, 9, 12, 13, 9, 10, 10, 8, 16, 10, 12, 30, 14, 28]
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
 
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = f"C{DATA_START}"
+    ws.auto_filter.ref = f"A{HEADER_ROW}:{get_column_letter(len(EXCEL_HEADERS))}{DATA_START + len(companies) - 1}"
 
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    # ---- Hoja Leyenda ----
+    lg = wb.create_sheet("Leyenda")
+    lg.merge_cells("A1:C1")
+    lg.cell(row=1, column=1, value="Metodología del Score").font = Font(color=_argb(NAVY), bold=True, size=13)
+    lg.cell(row=3, column=1, value="Banda").fill = head_fill
+    lg.cell(row=3, column=1).font = head_font
+    lg.cell(row=3, column=2, value="Rango").fill = head_fill
+    lg.cell(row=3, column=2).font = head_font
+    lg.cell(row=3, column=3, value="Significado").fill = head_fill
+    lg.cell(row=3, column=3).font = head_font
+    bands = [
+        ("MUY BUENO", "80–100", "Alta probabilidad de transición"),
+        ("BUENO", "60–79", "Posible candidato a investigar"),
+        ("MODERADO", "40–59", "Requiere más información"),
+        ("BAJO", "20–39", "Poca probabilidad de venta"),
+        ("NO RECOMENDADO", "0–19", "No parece candidato"),
+    ]
+    for i, (band, rng, meaning) in enumerate(bands, start=4):
+        lg.cell(row=i, column=1, value=band).font = Font(bold=True, color=_argb(BANDS[i - 4][2]))
+        lg.cell(row=i, column=2, value=rng)
+        lg.cell(row=i, column=3, value=meaning)
+    extra = [
+        (10, "Perfil objetivo de inversión"),
+        (11, "Facturación 10–15 M€ · EBITDA 1,5–3 M€ · Empleados 20–200"),
+        (13, "Score = 60% señales BORME + 40% solidez financiera"),
+        (14, "Señales BORME: edad del administrador, estabilidad, empresa familiar, consejo externo, sector CNAE, actividad reciente."),
+    ]
+    for r_i, val in extra:
+        lg.cell(row=r_i, column=1, value=val)
+    lg.cell(row=10, column=1).font = Font(bold=True, color=_argb(NAVY))
+    lg.column_dimensions["A"].width = 38
+    lg.column_dimensions["B"].width = 12
+    lg.column_dimensions["C"].width = 40
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()

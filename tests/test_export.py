@@ -1,5 +1,7 @@
-"""Tests de generación de PDF y Excel (engines.export)."""
-from backend.engines.export import export_pdf, export_excel
+"""Tests de generación finance-grade de PDF y Excel (engines.export)."""
+from io import BytesIO
+
+from backend.engines.export import export_pdf, export_excel, score_band
 from tests.conftest import make_company
 
 
@@ -8,64 +10,93 @@ def _pdf_header(buf: bytes) -> bool:
     return buf.startswith(b"%PDF")
 
 
-def test_export_pdf_genera_pdf_valido():
-    company = make_company(
-        website="https://nanta.es",
-        phone="+34 918075400",
-        email="nanta@nutreco.com",
-        ebitda=2_000_000,
-        revenue=12_000_000,
+def _sample_company(cif="B85767044", name="ALIMENTACION ANIMAL NANTA SL"):
+    c = make_company(
+        cif=cif, name=name, slug=name.lower().replace(" ", "-"),
+        website="https://nanta.es", phone="+34 918075400",
+        email="nanta@nutreco.com", ebitda=2_000_000, revenue=12_000_000,
     )
-    pdf = export_pdf(company)
+    c.score = 55.0
+    c.score_breakdown = {
+        "total": 55, "borme": 55, "financial": None,
+        "interpretation": "CANDIDATO MODERADO",
+        "breakdown": {"borme": {
+            "admin_age": 0, "stability": 0, "family": 20,
+            "no_council": 10, "cnae": 0, "recent_activity": 25,
+        }},
+    }
+    return c
+
+
+def test_score_band_alineado_con_umbrales():
+    assert score_band(93)[1] == "MUY BUENO"
+    assert score_band(65)[1] == "BUENO"
+    assert score_band(55)[1] == "MODERADO"
+    assert score_band(25)[1] == "BAJO"
+    assert score_band(5)[1] == "NO RECOMENDADO"
+    assert score_band(None)[1] == "Sin evaluar"
+
+
+def test_export_pdf_genera_pdf_valido():
+    pdf = export_pdf(_sample_company())
     assert isinstance(pdf, bytes)
-    assert len(pdf) > 500
-    assert _pdf_header(pdf)
+    assert len(pdf) > 2000
+    assert pdf.startswith(b"%PDF")
 
 
 def test_export_pdf_sin_datos_extra_no_peta():
-    # Empresa sin financiero, sin web, sin admin
-    company = make_company(
-        ebitda=None, revenue=None, website=None, phone=None, email=None,
-    )
+    company = make_company(ebitda=None, revenue=None, website=None, phone=None, email=None)
     pdf = export_pdf(company)
-    assert _pdf_header(pdf)
+    assert pdf.startswith(b"%PDF")
 
 
 def test_export_excel_genera_xlsx_validos():
     companies = [
-        make_company(
-            cif="B85767044", name="ALIMENTACION ANIMAL NANTA SL",
-            ebitda=2_000_000, revenue=12_000_000,
-        ),
-        make_company(
-            cif="A46103834", name="MERCADONA SA", slug="mercadona-sa",
-            ebitda=None, revenue=None,
-        ),
+        _sample_company(),
+        make_company(cif="A46103834", name="MERCADONA SA", slug="mercadona", ebitda=None, revenue=None),
     ]
     xlsx = export_excel(companies)
     assert isinstance(xlsx, bytes)
-    # El zip de un .xlsx arranca con PK
     assert xlsx.startswith(b"PK")
-    assert len(xlsx) > 500
+    assert len(xlsx) > 1000
 
 
-def test_export_excel_con_filas_esperadas():
+def test_export_excel_estructura_finance_grade():
     from openpyxl import load_workbook
-    from io import BytesIO
 
     companies = [
-        make_company(cif="B85767044", name="NANTA A", slug="nanta-a"),
-        make_company(cif="A46103834", name="MERCADONA", slug="mercadona"),
+        _sample_company(),
+        make_company(cif="A46103834", name="MERCADONA SA", slug="mercadona", ebitda=None, revenue=None),
     ]
-    xlsx = export_excel(companies)
-    wb = load_workbook(BytesIO(xlsx))
-    ws = wb.active
-    assert ws.title == "Candidatas"
-    # 1 cabecera + 2 filas de datos
-    assert ws.max_row == 3
-    # La cabecera contiene los campos clave
-    headers = [c.value for c in ws[1]]
-    assert "CIF" in headers
-    assert "Nombre" in headers
-    assert "EBITDA" in headers
-    assert "Score" in headers
+    wb = load_workbook(BytesIO(export_excel(companies)))
+    assert "Candidatas" in wb.sheetnames
+    assert "Leyenda" in wb.sheetnames
+    ws = wb["Candidatas"]
+    # fila 1 título, 2 generación, 3 vacía, 4 cabecera, 5-6 datos
+    assert ws.max_row == 6
+    headers = [c.value for c in ws[4]]
+    for key in ("CIF", "Nombre", "EBITDA (€)", "Facturación (€)", "Score", "Clasificación"):
+        assert key in headers
+    # cifras numéricas, no strings formateados
+    assert ws.cell(row=5, column=11).value == 2_000_000
+    assert ws.cell(row=6, column=11).value is None
+    # score con formato de banda
+    assert ws.cell(row=5, column=17).value == "MODERADO"
+    assert ws.cell(row=5, column=16).fill.start_color.rgb is not None
+    # autofiltro y panes congelados
+    assert ws.auto_filter.ref is not None
+    assert ws.freeze_panes == "C5"
+    # hoja Leyenda con bandas
+    lg = wb["Leyenda"]
+    assert lg["A4"].value == "MUY BUENO"
+    assert lg["B4"].value == "80–100"
+
+
+def test_export_excel_cabecera_coincide_con_datos():
+    from openpyxl import load_workbook
+
+    wb = load_workbook(BytesIO(export_excel([_sample_company()])))
+    ws = wb["Candidatas"]
+    headers = [c.value for c in ws[4]]
+    row = [c.value for c in ws[5]]
+    assert len(headers) == len(row)

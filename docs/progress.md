@@ -21,6 +21,12 @@
 | 10. Auditoría | ✅ Completada | 106 issues corregidos |
 
 ## Log de Cambios Recientes
+### 2026-09-10 — Reportes Finance-Grade (v1.2 #1) ✅
+- 📄 **PDF ejecutivo** (platypus): banda navy de cabecera (fecha + CONFIDENCIAL), medidor donut del score con color por banda, interpretación, desglose en mini-barras (Señales BORME / Solidez financiera), tabla de 6 criterios (puntos/máx), tabla de métricas financieras **con marcador "✓ objetivo"** frente al perfil de inversión (EBITDA 1,5–3M€, Facturación 10–15M€, margen >15%, empleados 20–200), corporativos/contacto, administradores, histórico BORME y pie con paginación y disclaimer.
+- 📊 **Excel finance-grade**: título + fecha, cabecera navy con autofiltro y paneles congelados, filas alternas, **cifras numéricas** (EBITDA/Facturación € con formato) para análisis, columna Score y Clasificación coloreadas por banda, y **hoja "Leyenda"** con metodología y perfil objetivo.
+- 🧪 Tests: 41/41 (+2: bandas de score y estructura finance-grade del Excel).
+- Verificado end-to-end por API real: PDF 2 páginas 200 OK, Excel 2 hojas 200 OK.
+
 ### 2026-09-09 — Auditoría ronda 2 (post-refactor de frontend) ✅
 - 🐛 **Bug corregido**: los filtros del panel (provincia, datos financieros, EBITDA, facturación) no aplicaban a la vista por defecto del ranking — solo a la búsqueda de texto. Ahora se aplican en cliente a cualquier lista visible, combinables con los chips de sector y banda.
 - 🧹 **Código muerto eliminado** (oxlint): imports sin uso en SearchPage (Trophy, Input, QUICK_SCORE_RANGES), CompanyDetail (CalendarDays, Activity, Users, MapPin), CandidatesPage (TrendingUp) y un catch vacío en Dashboard. 25 → 16 avisos (los restantes son patrones benignos: fast-refresh de shadcn, setState en efectos de carga, AbortController en cleanup).

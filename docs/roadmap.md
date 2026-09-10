@@ -306,7 +306,7 @@ search-fund-tool/
 ## Fase v1.2 — Mejoras y Optimizaciones (propuesta 2026-09-09)
 
 ### Prioridad alta (negocio)
-1. **Reportes PDF/Excel Finance-Grade** — plantillas profesionales para Cabiedes (export.py + vista previa en frontend).
+1. ~~**Reportes PDF/Excel Finance-Grade**~~ ✅ HECHOS (2026-09-10): PDF ejecutivo con medidor, criterios, métricas vs objetivo y BORME; Excel estilizado con números reales + hoja Leyenda.
 2. **EmpresiF real** — completar `empresief.py` (placeholder listo) para EBITDA/facturación reales → filtros financieros y scores 100% operativos.
 3. **Empaquetado completo del AppImage** — bundling del backend Python (`extraResources` + arranque sin venv externo) y regenerar release v1.1 con los fixes.
 
