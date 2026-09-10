@@ -375,7 +375,7 @@ export function CompanyDetail() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" /> Dictamen del Agente
+            <Sparkles className="size-4 text-primary" /> Dictamen y análisis del Agente
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -391,7 +391,7 @@ export function CompanyDetail() {
                 {company.agent_opinion}
               </p>
               <Button variant="outline" size="sm" onClick={generateOpinion}>
-                <Sparkles className="mr-2 size-3.5" /> Regenerar dictamen
+                <Sparkles className="mr-2 size-3.5" /> Regenerar análisis
               </Button>
             </div>
           ) : (
@@ -401,7 +401,7 @@ export function CompanyDetail() {
                 Registro Mercantil, encaje con el perfil objetivo y siguiente paso.
               </p>
               <Button size="sm" onClick={generateOpinion}>
-                <Sparkles className="mr-2 size-4" /> Generar dictamen (~1 min)
+                <Sparkles className="mr-2 size-4" /> Generar dictamen y análisis (~1 min)
               </Button>
             </div>
           )}

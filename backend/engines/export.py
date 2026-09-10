@@ -338,7 +338,7 @@ def export_pdf(company: Company) -> bytes:
 
     # ---- Dictamen del Agente (si está generado) ----
     if company.agent_opinion:
-        story.append(Paragraph("Dictamen del Agente", small))
+        story.append(Paragraph("Dictamen y análisis del Agente", small))
         story.append(Table(
             [[Paragraph(company.agent_opinion.replace("\n", "<br/>"),
                         ParagraphStyle("op", parent=txt, fontSize=9, leading=13, textColor=colors.HexColor(TEXT_DARK)))]],
