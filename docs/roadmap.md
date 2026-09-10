@@ -322,3 +322,27 @@ search-fund-tool/
 10. Contador de miembros por lista en el sidebar; marcar en el diálogo las listas que ya contienen la empresa.
 11. Historial de búsquedas accesible desde la UI (`/api/search-history` ya existe).
 12. Filtro por sector/CNAE en el panel de filtros (backend + UI).
+## Fase v1.3 — CRM de outreach y adquisición (propuesta tras research 2026-09-10)
+
+Comparativa del producto contra cómo trabajan los searchers reales
+(docs/research/sourcing-espana.md). Hoy cubrimos: buy box (filtros),
+universo (caché), priorización por riesgo de sucesión (score) y dictamen.
+Lo que falta para acompañar el flujo completo de un searcher:
+
+1. **CRM de outreach** 🌟 — la pieza más grande que falta. Por empresa:
+   registrar toques multicanal (email/teléfono/LinkedIn/carta/visita),
+   estado del pipeline (prospecto → contactado → conversación → LOI →
+   adquisición/descarte), notas de cada toque y próximas acciones con
+   recordatorio. Base técnica: tabla `outreach_touches` + vista
+   "pipeline" en el Panel de Control.
+2. **Presets de buy box** — guardar el conjunto de filtros con nombre
+   (ej. "Industria Euskadi 1-3M") y recargarlos en un clic.
+3. **Directorio de search funds España** — los ~50 fondos del research
+   como referencia estática (mapeo competitivo + potenciales coinversores).
+4. **Enriquecimiento de contactos**: hoy DDG+LLM (básico); añadir
+   LinkedIn como fuente (Sales Navigator manual o API) y captura de
+   "team pages" de webs corporativas.
+5. **Fuentes financieras**: EmpresiF (ya con placeholder) — alternativa
+   o complemento: SABI/Informa/Axesor (suscripción). El informe PDF ya
+   está preparado para crecer con los datos.
+6. **Export de outreach**: Excel con el pipeline de toques por empresa.
