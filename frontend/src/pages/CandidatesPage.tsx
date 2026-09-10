@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { CompanyCard } from "@/components/CompanyCard"
 import { CompanyCardSkeleton } from "@/components/CompanyCardSkeleton"
 import { QUICK_SCORE_RANGES, SCORE_RANGES, rangeBounds } from "@/components/FiltersBar"
-import { Trophy, TrendingUp } from "lucide-react"
+import { Trophy } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const SECTORS = [

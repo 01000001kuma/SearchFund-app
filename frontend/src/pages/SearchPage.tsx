@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import { useSearchParams } from "react-router-dom"
-import { Inbox, Trophy, Building2 } from "lucide-react"
+import { Inbox, Building2 } from "lucide-react"
 import { api } from "@/lib/api"
 import type { Company, ScoreDistribution } from "@/lib/types"
-import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CompanyCard } from "@/components/CompanyCard"
 import { CompanyCardSkeleton } from "@/components/CompanyCardSkeleton"
@@ -13,7 +12,6 @@ import {
   SCORE_RANGES,
   EBITDA_RANGES,
   REVENUE_RANGES,
-  QUICK_SCORE_RANGES,
   type Filters,
 } from "@/components/FiltersBar"
 
@@ -195,19 +193,55 @@ export function SearchPage() {
   const shownList = useMemo(() => {
     const base = searched ? results : allRank
     let list = base
-    if (bandBounds.min !== undefined || bandBounds.max !== undefined) {
+    // Chips de banda + select de score (combinables)
+    const band = rangeBounds(SCORE_RANGES, activeChip ?? "all")
+    const fine = rangeBounds(SCORE_RANGES, filters.scoreRange)
+    const min = band.min ?? fine.min
+    const max = band.max ?? fine.max
+    if (min !== undefined || max !== undefined) {
       list = list.filter((c) => {
         const s = c.score ?? 0
-        if (bandBounds.min !== undefined && s < bandBounds.min) return false
-        if (bandBounds.max !== undefined && s > bandBounds.max) return false
+        if (min !== undefined && s < min) return false
+        if (max !== undefined && s > max) return false
         return true
       })
+    }
+    // Filtros del panel: provincia, datos financieros, EBITDA y facturación
+    if (filters.province !== "all") {
+      list = list.filter((c) => c.province === filters.province)
+    }
+    if (filters.hasFinancial === "true") {
+      list = list.filter(
+        (c) => c.financial?.ebitda != null && c.financial?.revenue != null,
+      )
+    } else if (filters.hasFinancial === "false") {
+      list = list.filter(
+        (c) => !(c.financial?.ebitda != null && c.financial?.revenue != null),
+      )
+    }
+    const ebitdaBounds = rangeBounds(EBITDA_RANGES, filters.ebitdaRange)
+    if (ebitdaBounds.min !== undefined) {
+      list = list.filter((c) => (c.financial?.ebitda ?? -Infinity) >= ebitdaBounds.min!)
+    }
+    if (ebitdaBounds.max !== undefined) {
+      list = list.filter(
+        (c) => c.financial?.ebitda != null && c.financial.ebitda <= ebitdaBounds.max!,
+      )
+    }
+    const revenueBounds = rangeBounds(REVENUE_RANGES, filters.revenueRange)
+    if (revenueBounds.min !== undefined) {
+      list = list.filter((c) => (c.financial?.revenue ?? -Infinity) >= revenueBounds.min!)
+    }
+    if (revenueBounds.max !== undefined) {
+      list = list.filter(
+        (c) => c.financial?.revenue != null && c.financial.revenue <= revenueBounds.max!,
+      )
     }
     if (sectorFilter) {
       list = list.filter((c) => sectorOf(c) === sectorFilter)
     }
     return list
-  }, [searched, results, allRank, activeChip, sectorFilter, bandBounds.min, bandBounds.max])
+  }, [searched, results, allRank, activeChip, sectorFilter, bandBounds.min, bandBounds.max, filters])
 
   // Sectores presentes en el caché con su número de empresas
   const sectorCounts = useMemo(() => {

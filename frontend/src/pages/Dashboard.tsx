@@ -38,7 +38,7 @@ export function Dashboard() {
       toast.success(`Búsqueda completada. ${res.new_count} nuevas candidatas añadidas.`)
       const s = await api.getStats()
       setStats(s)
-    } catch (err) {
+    } catch {
       toast.error("Error al realizar la búsqueda diaria")
     } finally {
       setIsSearchingDaily(false)

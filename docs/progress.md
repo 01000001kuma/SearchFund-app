@@ -21,6 +21,12 @@
 | 10. Auditoría | ✅ Completada | 106 issues corregidos |
 
 ## Log de Cambios Recientes
+### 2026-09-09 — Auditoría ronda 2 (post-refactor de frontend) ✅
+- 🐛 **Bug corregido**: los filtros del panel (provincia, datos financieros, EBITDA, facturación) no aplicaban a la vista por defecto del ranking — solo a la búsqueda de texto. Ahora se aplican en cliente a cualquier lista visible, combinables con los chips de sector y banda.
+- 🧹 **Código muerto eliminado** (oxlint): imports sin uso en SearchPage (Trophy, Input, QUICK_SCORE_RANGES), CompanyDetail (CalendarDays, Activity, Users, MapPin), CandidatesPage (TrendingUp) y un catch vacío en Dashboard. 25 → 16 avisos (los restantes son patrones benignos: fast-refresh de shadcn, setState en efectos de carga, AbortController en cleanup).
+- ✅ Verificación completa: ruff limpio, 39/39 pytest, tsc 0 errores, build real ✓ 1957 módulos, 0 errores en oxlint.
+- Lección aplicada: verificación de build con grep del mensaje de éxito (no solo tail ni tsc con caché).
+
 ### 2026-09-09 — Búsqueda diaria automática (v1.2 #6) ✅
 - ⏰ **Timer systemd** `search-fund-daily.timer` (08:00 ± 5min, `Persistent=true` recupera ejecuciones perdidas si el equipo estaba apagado) + servicio oneshot `search-fund-daily.service`.
 - 📜 `scripts/daily-search.sh`: llama a `POST /api/search/daily`, registra resultado en `data/daily-search.log` y si el backend no responde lo arranca y reintenta 3× (30s).
