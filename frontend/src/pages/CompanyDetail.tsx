@@ -12,6 +12,7 @@ import {
   TrendingUp,
   ShieldCheck,
   Zap,
+  Sparkles,
 } from "lucide-react"
 import { api, getExportUrl } from "@/lib/api"
 import type { Company } from "@/lib/types"
