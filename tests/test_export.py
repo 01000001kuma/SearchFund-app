@@ -111,7 +111,6 @@ def test_export_pdf_sin_reprs_de_objetos():
 
 
 def test_export_pdf_calcula_desglose_si_no_esta_persistido():
-    from backend.models.financial import FinancialData
     c = make_company(cif="B22222222", name="SIN DESGLOSE SL", slug="sin-desglose")
     c.score = 45.0
     c.score_breakdown = None  # sin desglose persistido
