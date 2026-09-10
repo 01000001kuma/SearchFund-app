@@ -346,3 +346,38 @@ Lo que falta para acompañar el flujo completo de un searcher:
    o complemento: SABI/Informa/Axesor (suscripción). El informe PDF ya
    está preparado para crecer con los datos.
 6. **Export de outreach**: Excel con el pipeline de toques por empresa.
+### v1.3.1 — Transcripción local de llamadas/reuniones (aprobada, por implementar)
+
+**Coste: 0€/mes.** Whisper local (open-source, MIT) integrado en la app —
+sin nube, sin suscripciones. Plaud Note solo es opción para la calle.
+
+Flujo (desde la ficha de empresa):
+1. Botón "Nueva llamada" → grabar con el micro del PC (MediaRecorder)
+   o "Subir audio" (móvil, Plaud, grabadora de calle)
+2. Protocolo de apertura dictado antes de la llamada: nombre de empresa,
+   contacto y teléfono — el Agente lo parsea y precarga el toque
+3. Transcripción local con `faster-whisper` (modelo `base`/`small`,
+   español, ~1GB RAM; en la i7 de 2011 una llamada de 15 min se
+   transcribe en ~5-10 min en segundo plano)
+4. El Agente (gemma3:4b local) destila del transcript: contacto
+   confirmado, resumen, señales, siguiente paso + fecha
+5. Se registra como "toque" en el pipeline (tabla `outreach_touches`)
+
+Tareas técnicas: `pip install faster-whisper` en el venv · endpoint
+`POST /api/company/{cif}/transcribe` (multipart audio) · UI: grabadora
+con MediaRecorder + botón de subida · temporal: guardar audios en
+`data/audio/` y limpiar tras transcribir · modelo descargable bajo
+demanda (base ≈500MB, small ≈1GB).
+
+Legalidad: grabar conversaciones en las que se participa es legal en
+España; el procesamiento es local (nada sale de la máquina).
+
+### v1.3.2 — Localización en Google Maps (aprobada, por implementar)
+
+- En la ficha de empresa y en las tarjetas: botón "Cómo llegar" que
+  abre Google Maps con la dirección registrada:
+  `https://www.google.com/maps/dir/?api=1&destination=<dirección codificada>`
+- Si no hay dirección, construir con ciudad + provincia; si tampoco,
+  ocultar el botón
+- (Futuro opcional): mini-mapa embebido en la ficha (iframe de Google
+  Maps embed, sin API key usando el enlace directo)
