@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ScoreCircle, ScoreBadge } from "@/components/Score"
+import { ScoreCircle } from "@/components/Score"
 import { AddToListDialog } from "@/components/AddToListDialog"
 import { formatEuro } from "@/lib/utils"
 
@@ -188,7 +188,6 @@ export function CompanyDetail() {
             <Download className="size-4 mr-2" />
             Exportar Informe
           </Button>
-          <ScoreBadge score={company.score} />
           <AddToListDialog company={company} />
         </div>
       </div>
