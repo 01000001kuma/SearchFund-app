@@ -193,18 +193,47 @@ export function CompanyDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="space-y-6 lg:col-span-4">
-          <Card className="overflow-hidden border-primary/20">
-            <CardContent className="flex flex-col items-center gap-6 p-8 text-center">
-              <ScoreCircle score={company.score} size={140} />
-              <div>
-                <p className="text-lg font-semibold">{company.score_breakdown?.interpretation ?? "Sin evaluar"}</p>
-                <p className="text-sm text-muted-foreground">Probabilidad de Adquisición</p>
+      {/* Medidor de probabilidad (tira compacta de cabecera) */}
+      <Card className="border-primary/20">
+        <CardContent className="flex flex-wrap items-center gap-5 p-5">
+          <ScoreCircle score={company.score} size={110} />
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="text-sm font-semibold leading-snug">
+              {company.score_breakdown?.interpretation ?? "Sin evaluar"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Probabilidad de adquisición según las señales del Registro Mercantil y los datos financieros.
+            </p>
+            <div className="flex items-center gap-4 pt-1">
+              <div className="min-w-[140px] flex-1">
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Señales BORME</span>
+                  <span className="font-semibold">{company.score_breakdown?.borme?.toFixed(0) ?? 0}%</span>
+                </div>
+                <div className="mt-0.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-primary" style={{ width: `${company.score_breakdown?.borme ?? 0}%` }} />
+                </div>
               </div>
-            </CardContent>
-          </Card>
+              <div className="min-w-[140px] flex-1">
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Sólidez financiera</span>
+                  <span className="font-semibold">
+                    {company.score_breakdown?.financial != null
+                      ? `${company.score_breakdown.financial.toFixed(0)}%`
+                      : "sin datos"}
+                  </span>
+                </div>
+                <div className="mt-0.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500" style={{ width: `${company.score_breakdown?.financial ?? 0}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="space-y-6 lg:col-span-4">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -258,38 +287,7 @@ export function CompanyDetail() {
                 <Zap className="size-4 text-amber-500" /> Análisis de Fit (base del Score)
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-medium text-muted-foreground">Sincronía con Plan Maestro</span>
-                    <span className="text-xs font-bold text-primary">BORME {company.score_breakdown?.borme?.toFixed(0) ?? 0}%</span>
-                  </div>
-                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-primary transition-all" 
-                      style={{ width: `${company.score_breakdown?.borme ?? 0}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-medium text-muted-foreground">Solidez Financiera</span>
-                    <span className="text-xs font-bold text-emerald-500">
-                      {company.score_breakdown?.financial != null
-                        ? `Finanzas ${company.score_breakdown.financial.toFixed(0)}%`
-                        : "Finanzas: sin datos"}
-                    </span>
-                  </div>
-                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-500 transition-all" 
-                      style={{ width: `${company.score_breakdown?.financial ?? 0}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-              
+            <CardContent>
               {borme_breakdown && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {Object.entries(borme_breakdown).map(([key, val]) => {

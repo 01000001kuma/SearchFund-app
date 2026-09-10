@@ -75,13 +75,15 @@ export function ScoreCircle({
           cy={size / 2}
           r={r}
           strokeWidth={strokeWidth}
-          className="fill-background stroke-muted"
+          fill="var(--background)"
+          stroke="var(--muted)"
         />
         <circle
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
+          stroke="currentColor"
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={c}
