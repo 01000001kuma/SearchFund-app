@@ -9,6 +9,7 @@ import { toast } from "sonner"
 
 export function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null)
+  const [pipeline, setPipeline] = useState<PipelineItem[]>([])
   const [daily, setDaily] = useState<DailyStats[]>([])
   const [loading, setLoading] = useState(true)
   const [isSearchingDaily, setIsSearchingDaily] = useState(false)
@@ -18,14 +19,17 @@ export function Dashboard() {
     Promise.all([
       api.getStats({ signal: ctrl.signal }),
       api.getDailyStats(14, { signal: ctrl.signal }),
+      api.getPipeline({ signal: ctrl.signal }),
     ])
-      .then(([s, d]) => {
+      .then(([s, d, p]) => {
         setStats(s)
         setDaily(d.daily)
+        setPipeline(p.pipeline)
       })
       .catch(() => {
         setStats(null)
         setDaily([])
+        setPipeline([])
       })
       .finally(() => setLoading(false))
     return () => ctrl.abort()
@@ -43,6 +47,16 @@ export function Dashboard() {
     } finally {
       setIsSearchingDaily(false)
     }
+  }
+
+  const STATUS_ORDER = ["prospecto", "contactado", "conversacion", "loi", "adquisicion", "descartado"]
+  const PIPELINE_LABELS: Record<string, string> = {
+    prospecto: "Prospectos",
+    contactado: "Contactados",
+    conversacion: "En conversación",
+    loi: "LOI firmada",
+    adquisicion: "Adquiridas",
+    descartado: "Descartadas",
   }
 
   const cards = [
@@ -127,6 +141,20 @@ export function Dashboard() {
           </Link>
         ))}
       </div>
+
+      {/* Pipeline de outreach */}
+      {pipeline.length > 0 && (
+        <div className="flex flex-wrap gap-3">
+          {STATUS_ORDER.map((s) => (
+            <Link to="/candidatas" key={s}>
+              <Card className="px-4 py-2 transition-colors hover:bg-accent">
+                <p className="text-xs text-muted-foreground">{PIPELINE_LABELS[s]}</p>
+                <p className="text-lg font-bold">{pipeline.filter((p) => p.status === s).length}</p>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

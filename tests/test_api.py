@@ -184,3 +184,34 @@ def test_stats_incluye_conteos_de_hoy():
     assert "financial_today" in body
     assert body["companies_today"] >= 0
     assert body["financial_today"] >= 0
+
+
+# ==================== OUTREACH (CRM) ====================
+
+TOUCH = {"channel": "telefono", "summary": "Primera llamada", "next_action": "Llamar de nuevo",
+         "next_action_date": "2026-09-15"}
+
+
+def test_outreach_flujo_completo():
+    # registrar toque
+    resp = client.post("/api/company/B87654321/touch", json=TOUCH)
+    assert resp.status_code == 200
+    # listar toques
+    resp = client.get("/api/company/B87654321/touches")
+    assert resp.status_code == 200
+    assert resp.json()["total"] >= 1
+    # cambiar estado del pipeline
+    resp = client.patch("/api/company/B87654321/pipeline", json={"status": "conversacion"})
+    assert resp.status_code == 200
+    # pipeline global
+    resp = client.get("/api/pipeline")
+    assert resp.status_code == 200
+    items = resp.json()["pipeline"]
+    match = [i for i in items if i["cif"] == "B87654321"]
+    assert match and match[0]["status"] == "conversacion" and match[0]["touches"] >= 1
+
+
+def test_outreach_validaciones():
+    assert client.post("/api/company/B87654321/touch", json={"channel": "fax"}).status_code == 422
+    assert client.patch("/api/company/B87654321/pipeline", json={"status": "otro"}).status_code == 422
+    assert client.post("/api/company/ZZZ999999/touch", json=TOUCH).status_code == 404

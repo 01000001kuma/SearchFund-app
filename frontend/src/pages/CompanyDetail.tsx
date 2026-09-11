@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScoreCircle } from "@/components/Score"
 import { AddToListDialog } from "@/components/AddToListDialog"
+import { OutreachCard } from "@/components/OutreachCard"
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
@@ -452,6 +453,8 @@ export function CompanyDetail() {
           )}
         </CardContent>
       </Card>
+
+      <OutreachCard company={company} />
 
       <Card>
         <CardHeader className="pb-3">

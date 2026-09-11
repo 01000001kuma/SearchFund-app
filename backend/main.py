@@ -638,6 +638,63 @@ async def list_companies(
     }
 
 
+# ==================== OUTREACH (CRM) ====================
+
+TOUCH_CHANNELS = {"email", "telefono", "linkedin", "carta", "visita", "otro"}
+PIPELINE_STATUSES = ["prospecto", "contactado", "conversacion", "loi",
+                     "adquisicion", "descartado"]
+
+
+class TouchRequest(BaseModel):
+    channel: str = Field(..., description="email|telefono|linkedin|carta|visita|otro")
+    summary: Optional[str] = None
+    next_action: Optional[str] = None
+    next_action_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class PipelineStatusRequest(BaseModel):
+    status: str = Field(..., description="prospecto|contactado|conversacion|loi|adquirido|descartado")
+
+
+@app.post("/api/company/{cif}/touch")
+async def add_touch(cif: str, request: TouchRequest):
+    if request.channel not in TOUCH_CHANNELS:
+        raise HTTPException(status_code=422, detail="Canal no válido")
+    if not await database.get_company(cif):
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    touch_id = await database.add_touch(
+        cif, request.channel, request.summary,
+        request.next_action, request.next_action_date,
+    )
+    return {"status": "added", "id": touch_id}
+
+
+@app.get("/api/company/{cif}/touches")
+async def get_touches(cif: str):
+    if not await database.get_company(cif):
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    touches = await database.get_touches(cif)
+    return {"touches": touches, "total": len(touches)}
+
+
+@app.patch("/api/company/{cif}/pipeline")
+async def set_pipeline_status(cif: str, request: PipelineStatusRequest):
+    if request.status not in PIPELINE_STATUSES:
+        raise HTTPException(status_code=422, detail="Estado no válido")
+    if not await database.get_company(cif):
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    await database.set_pipeline_status(cif, request.status)
+    return {"status": "updated", "pipeline_status": request.status}
+
+
+@app.get("/api/pipeline")
+async def get_pipeline(status: Optional[str] = Query(None, description="Filtrar por estado")):
+    items = await database.get_pipeline()
+    if status:
+        items = [i for i in items if i["status"] == status]
+    return {"pipeline": items, "total": len(items)}
+
+
 # ==================== FUENTES ====================
 
 @app.get("/api/sources")

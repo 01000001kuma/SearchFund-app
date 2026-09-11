@@ -77,6 +77,25 @@ class Database:
             """)
 
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS outreach_touches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cif TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    summary TEXT,
+                    next_action TEXT,
+                    next_action_date TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (cif) REFERENCES companies(cif) ON DELETE CASCADE
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_touches_cif ON outreach_touches(cif)")
+
+            # Migración: columna pipeline_status en companies (si no existe)
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(companies)").fetchall()]
+            if "pipeline_status" not in cols:
+                conn.execute("ALTER TABLE companies ADD COLUMN pipeline_status TEXT DEFAULT 'prospecto'")
+
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS list_items (
                     list_id INTEGER,
                     cif TEXT,
@@ -199,6 +218,69 @@ class Database:
 
     async def search_local_companies(self, query: str, limit: int = 20):
         return await asyncio.to_thread(self._search_local_sync, query, limit)
+
+    def _add_touch_sync(self, cif: str, channel: str, summary: str = None,
+                        next_action: str = None, next_action_date: str = None):
+        conn = self._get_conn()
+        cur = conn.execute(
+            "INSERT INTO outreach_touches (cif, channel, summary, next_action, next_action_date) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (cif, channel, summary, next_action, next_action_date),
+        )
+        touch_id = cur.lastrowid
+        self._set_pipeline_status_sync(cif, "contactado")
+        conn.commit()
+        return touch_id
+
+    async def add_touch(self, cif: str, channel: str, summary: str = None,
+                        next_action: str = None, next_action_date: str = None):
+        return await asyncio.to_thread(
+            self._add_touch_sync, cif, channel, summary, next_action, next_action_date,
+        )
+
+    def _get_touches_sync(self, cif: str):
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT id, cif, channel, summary, next_action, next_action_date, created_at "
+            "FROM outreach_touches WHERE cif = ? ORDER BY created_at DESC", (cif,)
+        ).fetchall()
+        return [
+            {"id": r[0], "cif": r[1], "channel": r[2], "summary": r[3],
+             "next_action": r[4], "next_action_date": r[5], "created_at": r[6]}
+            for r in rows
+        ]
+
+    async def get_touches(self, cif: str):
+        return await asyncio.to_thread(self._get_touches_sync, cif)
+
+    def _set_pipeline_status_sync(self, cif: str, status: str):
+        conn = self._get_conn()
+        conn.execute("UPDATE companies SET pipeline_status = ? WHERE cif = ?", (status, cif))
+        conn.commit()
+
+    async def set_pipeline_status(self, cif: str, status: str):
+        return await asyncio.to_thread(self._set_pipeline_status_sync, cif, status)
+
+    def _get_pipeline_sync(self):
+        conn = self._get_conn()
+        rows = conn.execute("""
+            SELECT c.cif, json_extract(c.data, '$.name') AS name, c.pipeline_status AS status,
+                   (SELECT channel FROM outreach_touches WHERE cif = c.cif
+                    ORDER BY created_at DESC LIMIT 1) AS last_channel,
+                   MAX(t.created_at) AS last_touch, COUNT(t.id) AS touches
+            FROM companies c
+            LEFT JOIN outreach_touches t ON t.cif = c.cif
+            GROUP BY c.cif
+            ORDER BY last_touch DESC
+        """).fetchall()
+        return [
+            {"cif": r[0], "name": r[1], "status": r[2] or "prospecto",
+             "last_channel": r[3], "last_touch": r[4], "touches": r[5] or 0}
+            for r in rows
+        ]
+
+    async def get_pipeline(self):
+        return await asyncio.to_thread(self._get_pipeline_sync)
 
     def _search_companies_sync(self, min_score=None, max_score=None, province=None,
                                has_financial_data=None, limit=100, offset=0):
